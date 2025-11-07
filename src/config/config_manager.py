@@ -173,67 +173,172 @@ class ConfigManager:
             raise
 
     def _load_from_env(self):
-        """Load configuration from environment variables."""
+        """
+        Load configuration from environment variables.
+
+        MEDIUM PRIORITY FIX: Improve environment variable parsing robustness.
+        """
         # Map environment variables to config fields
         env_mapping = {
-            'RAG_CODEBASE_PATH': 'codebase_path',
-            'RAG_DB_PATH': 'db_path',
-            'RAG_EMBEDDING_MODEL': 'embedding_model',
-            'RAG_N_RESULTS': 'n_results',
-            'RAG_USE_CACHE': 'use_cache',
-            'RAG_MCP_HOST': 'mcp_host',
-            'RAG_MCP_PORT': 'mcp_port',
+            'RAG_CODEBASE_PATH': ('codebase_path', 'str'),
+            'RAG_DB_PATH': ('db_path', 'str'),
+            'RAG_CACHE_DIR': ('cache_dir', 'str'),
+            'RAG_EMBEDDING_MODEL': ('embedding_model', 'str'),
+            'RAG_N_RESULTS': ('n_results', 'int'),
+            'RAG_USE_CACHE': ('use_cache', 'bool'),
+            'RAG_USE_HYBRID': ('use_hybrid', 'bool'),
+            'RAG_USE_RERANKING': ('use_reranking', 'bool'),
+            'RAG_BATCH_SIZE': ('batch_size', 'int'),
+            'RAG_LAZY_LOADING': ('lazy_loading', 'bool'),
+            'RAG_MCP_HOST': ('mcp_host', 'str'),
+            'RAG_MCP_PORT': ('mcp_port', 'int'),
+            'RAG_CACHE_TTL': ('cache_ttl_seconds', 'int'),
         }
 
-        for env_var, config_key in env_mapping.items():
-            value = os.getenv(env_var)
+        for env_var, (config_key, type_spec) in env_mapping.items():
+            raw_value = os.getenv(env_var)
 
-            if value is not None:
-                # HIGH PRIORITY FIX: Add error handling for type conversion
-                try:
-                    # Type conversion with validation
-                    if config_key in ['n_results', 'mcp_port', 'batch_size']:
-                        try:
-                            value = int(value)
-                            # Validate range
-                            if config_key == 'mcp_port' and not (1024 <= value <= 65535):
-                                logger.error(f"Invalid port in {env_var}: {value} (must be 1024-65535)")
+            if raw_value is None:
+                continue
+
+            # MEDIUM PRIORITY FIX: Robust type conversion with detailed error handling
+            try:
+                # Strip whitespace
+                raw_value = raw_value.strip()
+
+                if not raw_value:
+                    logger.warning(f"Environment variable {env_var} is empty, skipping")
+                    continue
+
+                # Type conversion with validation
+                if type_spec == 'int':
+                    try:
+                        value = int(raw_value)
+
+                        # Range validation
+                        if config_key == 'mcp_port':
+                            if not (1024 <= value <= 65535):
+                                logger.error(
+                                    f"Invalid port in {env_var}: {value}. "
+                                    f"Must be 1024-65535. Using config default."
+                                )
                                 continue
-                            if config_key in ['n_results', 'batch_size'] and value < 1:
-                                logger.error(f"Invalid value in {env_var}: {value} (must be >= 1)")
+                        elif config_key in ['n_results', 'batch_size', 'cache_ttl_seconds']:
+                            if value < 1:
+                                logger.error(
+                                    f"Invalid value in {env_var}: {value}. "
+                                    f"Must be >= 1. Using config default."
+                                )
                                 continue
-                        except ValueError:
-                            logger.error(f"Invalid integer in {env_var}: {value}")
-                            continue
+                            if config_key == 'n_results' and value > 100:
+                                logger.warning(
+                                    f"Large n_results in {env_var}: {value}. "
+                                    f"This may impact performance."
+                                )
+                            if config_key == 'batch_size' and value > 256:
+                                logger.warning(
+                                    f"Large batch_size in {env_var}: {value}. "
+                                    f"This may cause memory issues."
+                                )
 
-                    elif config_key in ['use_cache', 'use_hybrid', 'lazy_loading']:
-                        value = value.lower() in ('true', '1', 'yes')
+                    except ValueError as e:
+                        logger.error(
+                            f"Invalid integer in {env_var}: '{raw_value}'. "
+                            f"Error: {e}. Using config default."
+                        )
+                        continue
 
-                    setattr(self.config, config_key, value)
-                    logger.debug(f"Loaded {config_key} from environment")
+                elif type_spec == 'bool':
+                    # MEDIUM PRIORITY FIX: Support more boolean formats
+                    lower_value = raw_value.lower()
+                    if lower_value in ('true', '1', 'yes', 'on', 'enabled'):
+                        value = True
+                    elif lower_value in ('false', '0', 'no', 'off', 'disabled'):
+                        value = False
+                    else:
+                        logger.error(
+                            f"Invalid boolean in {env_var}: '{raw_value}'. "
+                            f"Expected true/false, 1/0, yes/no, on/off, enabled/disabled. "
+                            f"Using config default."
+                        )
+                        continue
 
-                except Exception as e:
-                    logger.error(f"Error loading {env_var}: {e}")
+                elif type_spec == 'str':
+                    value = raw_value
+                    # Validate path exists for path fields
+                    if config_key == 'codebase_path':
+                        from pathlib import Path
+                        if not Path(value).exists():
+                            logger.warning(
+                                f"Codebase path from {env_var} does not exist: {value}"
+                            )
+
+                else:
+                    logger.error(f"Unknown type spec '{type_spec}' for {env_var}")
+                    continue
+
+                # Set the configuration value
+                setattr(self.config, config_key, value)
+                logger.debug(f"Loaded {config_key}={value} from {env_var}")
+
+            except Exception as e:
+                logger.error(
+                    f"Unexpected error loading {env_var}: {e}. Using config default.",
+                    exc_info=True
+                )
 
     def save_config(self, environment: Optional[str] = None):
         """
         Save configuration to file.
 
+        MEDIUM PRIORITY FIX: Use atomic write to prevent corruption.
+
         Args:
             environment: Environment to save to (default: current)
+
+        Raises:
+            Exception: If save fails
         """
+        import tempfile
+        import os
+
         env = environment or self.environment
         config_path = self.config_dir / f'{env}.json'
 
         try:
-            config_path.write_text(
-                json.dumps(self.config.to_dict(), indent=2)
+            # MEDIUM PRIORITY FIX: Atomic write using temp file + rename
+            config_data = json.dumps(self.config.to_dict(), indent=2)
+
+            # Write to temporary file in same directory
+            fd, temp_path = tempfile.mkstemp(
+                dir=str(self.config_dir),
+                prefix=f'.{env}.tmp.',
+                suffix='.json'
             )
 
-            logger.info(f"Configuration saved to {config_path}")
+            try:
+                # Write data to temp file
+                with os.fdopen(fd, 'w') as f:
+                    f.write(config_data)
+                    f.flush()
+                    os.fsync(f.fileno())  # Ensure data is written to disk
+
+                # Atomic rename (on Unix-like systems)
+                os.replace(temp_path, str(config_path))
+
+                logger.info(f"Configuration saved atomically to {config_path}")
+
+            except Exception:
+                # Clean up temp file on error
+                try:
+                    os.unlink(temp_path)
+                except OSError:
+                    pass
+                raise
 
         except Exception as e:
             logger.error(f"Error saving config: {e}")
+            raise
 
     def get(self, key: str, default: Any = None) -> Any:
         """

@@ -20,16 +20,41 @@ class QueryCache:
         """
         Initialize query cache.
 
+        MEDIUM PRIORITY FIX: Add cache size validation and limits.
+
         Args:
             maxsize: Maximum number of cached queries
             ttl: Time to live in seconds
+
+        Raises:
+            ValueError: If maxsize or ttl are invalid
         """
+        # MEDIUM PRIORITY FIX: Validate cache size limits
+        if maxsize < 1:
+            raise ValueError(f"Cache maxsize must be >= 1, got {maxsize}")
+        if maxsize > 100000:
+            logger.warning(
+                f"Cache maxsize {maxsize} is very large. "
+                f"This may consume significant memory. Consider using a smaller value."
+            )
+        if ttl < 1:
+            raise ValueError(f"Cache TTL must be >= 1 second, got {ttl}")
+        if ttl > 86400:  # 24 hours
+            logger.warning(
+                f"Cache TTL {ttl}s is very long (>24h). "
+                f"Consider using a shorter TTL for fresher results."
+            )
+
+        self.maxsize = maxsize
+        self.ttl = ttl
         self.query_cache = TTLCache(maxsize=maxsize, ttl=ttl)
-        self.embedding_cache = TTLCache(maxsize=500, ttl=ttl * 2)
+        self.embedding_cache = TTLCache(maxsize=min(maxsize // 2, 500), ttl=ttl * 2)
         self.hits = 0
         self.misses = 0
         # HIGH PRIORITY FIX: Add lock for thread-safe counter updates
         self._stats_lock = threading.Lock()
+
+        logger.info(f"QueryCache initialized (maxsize={maxsize}, ttl={ttl}s)")
 
     def _generate_key(self, query_text: str, n_results: int, file_type: Optional[str]) -> str:
         """
@@ -125,6 +150,8 @@ class QueryCache:
         """
         Get cache statistics.
 
+        MEDIUM PRIORITY FIX: Include cache size limits and utilization.
+
         Returns:
             Dictionary with cache stats
         """
@@ -136,10 +163,23 @@ class QueryCache:
         total_requests = hits + misses
         hit_rate = (hits / total_requests * 100) if total_requests > 0 else 0
 
+        query_size = len(self.query_cache)
+        embedding_size = len(self.embedding_cache)
+
+        # MEDIUM PRIORITY FIX: Add utilization metrics
+        query_utilization = (query_size / self.maxsize * 100) if self.maxsize > 0 else 0
+        embedding_maxsize = self.embedding_cache.maxsize
+        embedding_utilization = (embedding_size / embedding_maxsize * 100) if embedding_maxsize > 0 else 0
+
         return {
             'hits': hits,
             'misses': misses,
             'hit_rate': f"{hit_rate:.1f}%",
-            'query_cache_size': len(self.query_cache),
-            'embedding_cache_size': len(self.embedding_cache)
+            'query_cache_size': query_size,
+            'query_cache_max': self.maxsize,
+            'query_cache_utilization': f"{query_utilization:.1f}%",
+            'embedding_cache_size': embedding_size,
+            'embedding_cache_max': embedding_maxsize,
+            'embedding_cache_utilization': f"{embedding_utilization:.1f}%",
+            'ttl_seconds': self.ttl
         }
