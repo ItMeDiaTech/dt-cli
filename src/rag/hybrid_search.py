@@ -152,16 +152,20 @@ class HybridSearchEngine:
         semantic_results: List[Dict[str, Any]],
         keyword_results: List[Dict[str, Any]],
         semantic_weight: float = 0.7,
-        keyword_weight: float = 0.3
+        keyword_weight: float = 0.3,
+        n_results: Optional[int] = None
     ) -> List[Dict[str, Any]]:
         """
         Combine semantic and keyword search results.
+
+        HIGH PRIORITY FIX: Added n_results parameter to ensure enough results.
 
         Args:
             semantic_results: Results from semantic search
             keyword_results: Results from keyword search
             semantic_weight: Weight for semantic results (0-1)
             keyword_weight: Weight for keyword results (0-1)
+            n_results: Number of results to return (if None, return all)
 
         Returns:
             Combined and reranked results
@@ -223,6 +227,17 @@ class HybridSearchEngine:
             result['combined_score'] = item['combined_score']
             result['search_type'] = item['search_type']
             final_results.append(result)
+
+        # HIGH PRIORITY FIX: Ensure we return requested number of results
+        if n_results and len(final_results) < n_results:
+            logger.debug(
+                f"Hybrid search returned {len(final_results)} results, "
+                f"requested {n_results}. Consider increasing input result counts."
+            )
+
+        # Limit to requested number if specified
+        if n_results:
+            final_results = final_results[:n_results]
 
         return final_results
 

@@ -47,6 +47,8 @@ class Repository:
 class MultiRepositoryManager:
     """
     Manages multiple repositories for unified indexing and search.
+
+    HIGH PRIORITY FIX: Added context manager support for proper resource management.
     """
 
     def __init__(self, config_file: Optional[Path] = None):
@@ -60,6 +62,40 @@ class MultiRepositoryManager:
         self.repositories: Dict[str, Repository] = {}
 
         self._load_repositories()
+
+    def __enter__(self):
+        """
+        HIGH PRIORITY FIX: Context manager entry.
+
+        Allows usage like:
+            with MultiRepositoryManager() as manager:
+                manager.index_all_repositories()
+        """
+        return self
+
+    def __exit__(self, exc_type, exc_val, exc_tb):
+        """
+        HIGH PRIORITY FIX: Context manager exit.
+
+        Ensures repositories are saved on exit.
+
+        Args:
+            exc_type: Exception type if raised
+            exc_val: Exception value if raised
+            exc_tb: Exception traceback if raised
+
+        Returns:
+            False to propagate exceptions
+        """
+        try:
+            # Save repositories on exit
+            self._save_repositories()
+            logger.debug("Saved repositories on context manager exit")
+        except Exception as e:
+            logger.error(f"Error saving repositories on exit: {e}")
+
+        # Don't suppress exceptions
+        return False
 
     def add_repository(
         self,

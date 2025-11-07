@@ -17,6 +17,7 @@ from datetime import datetime
 import json
 import logging
 from enum import Enum
+from threading import Lock
 
 logger = logging.getLogger(__name__)
 
@@ -140,6 +141,9 @@ class WorkspaceManager:
 
         self.workspaces: Dict[str, Workspace] = {}
         self.activity_log: List[ActivityEntry] = []
+
+        # HIGH PRIORITY FIX: Add lock for thread-safe activity tracking
+        self._activity_lock = Lock()
 
         # Load workspaces and activity log
         self._load_workspaces()
@@ -724,7 +728,11 @@ class WorkspaceManager:
         resource_id: str,
         details: Optional[Dict[str, Any]] = None
     ):
-        """Log activity entry and persist to disk."""
+        """
+        Log activity entry and persist to disk.
+
+        HIGH PRIORITY FIX: Thread-safe activity logging.
+        """
         entry = ActivityEntry(
             id=self._generate_id(f"{workspace_id}_{user_id}_{action}"),
             workspace_id=workspace_id,
@@ -736,18 +744,20 @@ class WorkspaceManager:
             details=details or {}
         )
 
-        self.activity_log.append(entry)
+        # HIGH PRIORITY FIX: Protect entire operation with lock
+        with self._activity_lock:
+            self.activity_log.append(entry)
 
-        # CRITICAL FIX: Persist activity to disk immediately
-        self._save_activity_entry(entry)
+            # CRITICAL FIX: Persist activity to disk immediately
+            self._save_activity_entry(entry)
 
-        # Update member last active
-        workspace = self.workspaces.get(workspace_id)
-        if workspace and user_id in workspace.members:
-            workspace.members[user_id].last_active = entry.timestamp
-            workspace.members[user_id].activity_count += 1
-            # Save workspace with updated member info
-            self._save_workspace(workspace)
+            # Update member last active
+            workspace = self.workspaces.get(workspace_id)
+            if workspace and user_id in workspace.members:
+                workspace.members[user_id].last_active = entry.timestamp
+                workspace.members[user_id].activity_count += 1
+                # Save workspace with updated member info
+                self._save_workspace(workspace)
 
     def _generate_id(self, base: str) -> str:
         """Generate unique ID."""
