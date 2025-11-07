@@ -24,16 +24,58 @@ class VectorStore:
         """
         Initialize the vector store.
 
+        MEDIUM PRIORITY FIX: Add path traversal validation.
+
         Args:
             persist_directory: Directory to persist the database
             collection_name: Name of the collection to use
+
+        Raises:
+            ValueError: If persist_directory is invalid or attempts path traversal
         """
-        self.persist_directory = persist_directory
+        # MEDIUM PRIORITY FIX: Validate persist_directory to prevent path traversal
+        from pathlib import Path
+
+        persist_path = Path(persist_directory).resolve()
+
+        # Check for suspicious patterns
+        if ".." in persist_directory:
+            logger.error(f"Path traversal detected in persist_directory: {persist_directory}")
+            raise ValueError(
+                f"Invalid persist_directory: path traversal detected. "
+                f"Directory must not contain '..' components."
+            )
+
+        # Ensure path is within current working directory or explicitly absolute
+        # If relative path, it should be safe
+        if not persist_path.is_absolute():
+            # Relative paths are resolved relative to cwd, which is safe
+            logger.debug(f"Using relative persist_directory: {persist_directory}")
+        else:
+            # For absolute paths, verify they don't point to sensitive system directories
+            sensitive_dirs = ['/etc', '/sys', '/proc', '/dev', '/root', '/boot']
+            for sensitive in sensitive_dirs:
+                try:
+                    if persist_path.is_relative_to(sensitive):
+                        logger.error(f"Attempt to use sensitive directory: {persist_path}")
+                        raise ValueError(
+                            f"Invalid persist_directory: cannot use sensitive system directory {sensitive}"
+                        )
+                except (ValueError, AttributeError):
+                    # is_relative_to() not available in Python < 3.9, or not relative
+                    # Fall back to string comparison
+                    if str(persist_path).startswith(sensitive):
+                        logger.error(f"Attempt to use sensitive directory: {persist_path}")
+                        raise ValueError(
+                            f"Invalid persist_directory: cannot use sensitive system directory {sensitive}"
+                        )
+
+        self.persist_directory = str(persist_path)
         self.collection_name = collection_name
         self.client = None
         self.collection = None
 
-        logger.info(f"Initializing VectorStore at {persist_directory}")
+        logger.info(f"Initializing VectorStore at {self.persist_directory}")
 
     def initialize(self):
         """Initialize the ChromaDB client and collection."""

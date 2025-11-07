@@ -28,11 +28,23 @@ class EmbeddingEngine:
         logger.info(f"Initializing EmbeddingEngine with model: {model_name}")
 
     def load_model(self):
-        """Load the embedding model."""
+        """
+        Load the embedding model.
+
+        MEDIUM PRIORITY FIX: Add error handling for model loading failures.
+        """
         if self.model is None:
             logger.info(f"Loading embedding model: {self.model_name}")
-            self.model = SentenceTransformer(self.model_name)
-            logger.info("Model loaded successfully")
+
+            try:
+                self.model = SentenceTransformer(self.model_name)
+                logger.info("Model loaded successfully")
+            except Exception as e:
+                logger.error(f"Failed to load embedding model '{self.model_name}': {e}")
+                raise RuntimeError(
+                    f"Could not load embedding model '{self.model_name}'. "
+                    f"Check internet connection or model name. Error: {e}"
+                ) from e
 
     def encode(
         self,
@@ -43,6 +55,8 @@ class EmbeddingEngine:
         """
         Generate embeddings for text(s).
 
+        MEDIUM PRIORITY FIX: Add error handling for encoding failures.
+
         Args:
             texts: Single text or list of texts to embed
             batch_size: Batch size for encoding
@@ -50,21 +64,40 @@ class EmbeddingEngine:
 
         Returns:
             Numpy array of embeddings
+
+        Raises:
+            RuntimeError: If embedding generation fails
         """
         self.load_model()
 
         if isinstance(texts, str):
             texts = [texts]
 
-        logger.debug(f"Encoding {len(texts)} texts")
-        embeddings = self.model.encode(
-            texts,
-            batch_size=batch_size,
-            show_progress_bar=show_progress_bar,
-            convert_to_numpy=True
-        )
+        # MEDIUM PRIORITY FIX: Validate input
+        if not texts or all(not t or not t.strip() for t in texts):
+            logger.warning("Encode called with empty or whitespace-only texts")
+            # Return zero embeddings for empty input
+            dimension = self.get_dimension()
+            return np.zeros((len(texts), dimension))
 
-        return embeddings
+        logger.debug(f"Encoding {len(texts)} texts")
+
+        try:
+            embeddings = self.model.encode(
+                texts,
+                batch_size=batch_size,
+                show_progress_bar=show_progress_bar,
+                convert_to_numpy=True
+            )
+
+            return embeddings
+
+        except Exception as e:
+            logger.error(f"Embedding generation failed: {e}")
+            raise RuntimeError(
+                f"Failed to generate embeddings for {len(texts)} texts. "
+                f"This may be due to memory issues or invalid input. Error: {e}"
+            ) from e
 
     def get_dimension(self) -> int:
         """Get the embedding dimension."""

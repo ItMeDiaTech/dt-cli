@@ -17,14 +17,53 @@ class GitChangeTracker:
         """
         Initialize Git tracker.
 
+        MEDIUM PRIORITY FIX: Add git binary validation.
+
         Args:
             repo_path: Path to Git repository
         """
         self.repo_path = Path(repo_path)
-        self.is_git_repo = self._check_git_repo()
+
+        # MEDIUM PRIORITY FIX: Validate git binary exists before use
+        self.git_available = self._validate_git_binary()
+
+        if self.git_available:
+            self.is_git_repo = self._check_git_repo()
+        else:
+            self.is_git_repo = False
+            logger.warning("Git binary not found - git integration disabled")
+
+    def _validate_git_binary(self) -> bool:
+        """
+        MEDIUM PRIORITY FIX: Validate git binary is available.
+
+        Returns:
+            True if git is available
+        """
+        import shutil
+
+        git_path = shutil.which('git')
+
+        if git_path is None:
+            logger.warning(
+                "Git binary not found in PATH. "
+                "Git integration will be disabled. "
+                "Install git or add it to PATH to enable git-based change detection."
+            )
+            return False
+
+        logger.debug(f"Git binary found at: {git_path}")
+        return True
 
     def _check_git_repo(self) -> bool:
-        """Check if directory is a git repository."""
+        """
+        Check if directory is a git repository.
+
+        MEDIUM PRIORITY FIX: Only check if git binary is available.
+        """
+        if not self.git_available:
+            return False
+
         try:
             subprocess.run(
                 ['git', 'rev-parse', '--git-dir'],
@@ -34,7 +73,8 @@ class GitChangeTracker:
                 timeout=5
             )
             return True
-        except (subprocess.CalledProcessError, FileNotFoundError, subprocess.TimeoutExpired):
+        except (subprocess.CalledProcessError, FileNotFoundError, subprocess.TimeoutExpired) as e:
+            logger.debug(f"Not a git repository: {e}")
             return False
 
     def get_changed_files(self, since_commit: str = "HEAD~1") -> Set[str]:

@@ -173,10 +173,14 @@ class CodeChangeHandler(FileSystemEventHandler):
                 if ready_files:
                     logger.info(f"Processing {len(ready_files)} changed files")
 
+                    # MEDIUM PRIORITY FIX: More detailed error handling
                     try:
                         self.on_change_callback(ready_files)
                     except Exception as e:
-                        logger.error(f"Error processing changes: {e}")
+                        logger.error(
+                            f"Error processing {len(ready_files)} changed files: {e}. "
+                            f"Files will not be re-indexed: {list(ready_files)[:5]}..."
+                        )
 
 
 class RealtimeIndexWatcher:

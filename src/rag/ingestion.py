@@ -36,20 +36,29 @@ class DocumentIngestion:
         self,
         chunk_size: int = 1000,
         chunk_overlap: int = 200,
-        encoding_name: str = "cl100k_base"
+        encoding_name: str = "cl100k_base",
+        max_file_size: int = 10 * 1024 * 1024  # 10MB default
     ):
         """
         Initialize the document ingestion pipeline.
+
+        MEDIUM PRIORITY FIX: Add file size limits to prevent memory issues.
 
         Args:
             chunk_size: Maximum size of text chunks in tokens
             chunk_overlap: Number of overlapping tokens between chunks
             encoding_name: Tokenizer encoding to use
+            max_file_size: Maximum file size in bytes (default: 10MB)
         """
         self.chunk_size = chunk_size
         self.chunk_overlap = chunk_overlap
         self.encoding = tiktoken.get_encoding(encoding_name)
-        logger.info(f"Initialized DocumentIngestion (chunk_size={chunk_size})")
+        self.max_file_size = max_file_size
+
+        logger.info(
+            f"Initialized DocumentIngestion "
+            f"(chunk_size={chunk_size}, max_file_size={max_file_size // 1024 // 1024}MB)"
+        )
 
     def discover_files(
         self,
@@ -102,6 +111,8 @@ class DocumentIngestion:
         """
         Read file content with error handling.
 
+        MEDIUM PRIORITY FIX: Add file size limits to prevent memory issues.
+
         Args:
             file_path: Path to the file
 
@@ -109,6 +120,21 @@ class DocumentIngestion:
             File content or None if error
         """
         try:
+            # MEDIUM PRIORITY FIX: Check file size before reading
+            file_size = file_path.stat().st_size
+
+            if file_size > self.max_file_size:
+                logger.warning(
+                    f"Skipping large file {file_path}: "
+                    f"{file_size / 1024 / 1024:.2f}MB exceeds limit of "
+                    f"{self.max_file_size / 1024 / 1024:.2f}MB"
+                )
+                return None
+
+            if file_size == 0:
+                logger.debug(f"Skipping empty file: {file_path}")
+                return None
+
             # HIGH PRIORITY FIX: Use 'replace' instead of 'ignore'
             # 'ignore' silently drops invalid characters, corrupting documents
             # 'replace' replaces them with � so we can detect corruption

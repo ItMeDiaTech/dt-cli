@@ -74,6 +74,61 @@ class EnhancedQueryEngine:
 
         logger.info("EnhancedQueryEngine initialized with all improvements")
 
+    def validate(self) -> bool:
+        """
+        MEDIUM PRIORITY FIX: Validate query engine is properly configured.
+
+        Returns:
+            True if valid
+
+        Raises:
+            RuntimeError: If validation fails
+        """
+        errors = []
+
+        # Check embedding engine
+        try:
+            if not hasattr(self.embedding_engine, 'encode'):
+                errors.append("Embedding engine missing 'encode' method")
+        except Exception as e:
+            errors.append(f"Embedding engine validation failed: {e}")
+
+        # Check vector store
+        try:
+            if not hasattr(self.vector_store, 'query'):
+                errors.append("Vector store missing 'query' method")
+        except Exception as e:
+            errors.append(f"Vector store validation failed: {e}")
+
+        # Check ingestion pipeline
+        try:
+            if not hasattr(self.ingestion, 'discover_files'):
+                errors.append("Ingestion pipeline missing 'discover_files' method")
+        except Exception as e:
+            errors.append(f"Ingestion pipeline validation failed: {e}")
+
+        if errors:
+            error_msg = "Query engine validation failed:\n" + "\n".join(f"  - {e}" for e in errors)
+            logger.error(error_msg)
+            raise RuntimeError(error_msg)
+
+        logger.debug("Query engine validation passed")
+        return True
+
+    def is_ready(self) -> bool:
+        """
+        MEDIUM PRIORITY FIX: Check if query engine is ready for queries.
+
+        Returns:
+            True if ready (has indexed documents)
+        """
+        try:
+            count = self.vector_store.get_count()
+            return count > 0
+        except Exception as e:
+            logger.error(f"Error checking query engine readiness: {e}")
+            return False
+
     def index_codebase(
         self,
         root_path: str = ".",
@@ -84,12 +139,24 @@ class EnhancedQueryEngine:
         """
         Index codebase with incremental support and progress tracking.
 
+        MEDIUM PRIORITY FIX: Add validation before indexing.
+
         Args:
             root_path: Root directory to index
             incremental: Use incremental indexing
             use_git: Use git for change detection
             progress_callback: Optional progress callback
+
+        Raises:
+            RuntimeError: If query engine is not properly configured
         """
+        # MEDIUM PRIORITY FIX: Validate query engine before indexing
+        try:
+            self.validate()
+        except RuntimeError as e:
+            logger.error(f"Query engine validation failed: {e}")
+            raise
+
         start_time = time.time()
 
         logger.info(f"Starting indexing: incremental={incremental}, git={use_git}")
@@ -220,6 +287,8 @@ class EnhancedQueryEngine:
         """
         Query the RAG system with all enhancements.
 
+        MEDIUM PRIORITY FIX: Add validation and readiness check.
+
         Args:
             query_text: Query string
             n_results: Number of results
@@ -231,7 +300,24 @@ class EnhancedQueryEngine:
 
         Returns:
             List of results
+
+        Raises:
+            RuntimeError: If query engine is not ready
         """
+        # MEDIUM PRIORITY FIX: Validate input
+        if not query_text or not query_text.strip():
+            logger.warning("Query called with empty query text")
+            return []
+
+        # MEDIUM PRIORITY FIX: Check if query engine is ready
+        if not self.is_ready():
+            error_msg = (
+                "Query engine is not ready. No documents have been indexed. "
+                "Please run index_codebase() first."
+            )
+            logger.error(error_msg)
+            raise RuntimeError(error_msg)
+
         # Check cache first
         if use_cache:
             cached = self.cache.get(query_text, n_results, file_type)

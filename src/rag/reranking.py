@@ -51,6 +51,8 @@ class Reranker:
         """
         Rerank results using cross-encoder.
 
+        MEDIUM PRIORITY FIX: Log warnings on empty results instead of silent return.
+
         Args:
             query: Original query
             results: List of search results
@@ -59,7 +61,16 @@ class Reranker:
         Returns:
             Reranked results
         """
-        if not CROSS_ENCODER_AVAILABLE or not results:
+        # MEDIUM PRIORITY FIX: Log warnings instead of silent returns
+        if not CROSS_ENCODER_AVAILABLE:
+            logger.debug("CrossEncoder not available - skipping reranking")
+            return results
+
+        if not results:
+            logger.warning(
+                f"Rerank called with empty results for query: '{query}'. "
+                f"This may indicate an issue with the initial search."
+            )
             return results
 
         self.load_model()
