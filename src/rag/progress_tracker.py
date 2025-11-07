@@ -33,7 +33,9 @@ class ProgressTracker:
         """
         try:
             status['last_updated'] = datetime.now().isoformat()
-            self.status_file.write_text(json.dumps(status, indent=2))
+            # CRITICAL FIX: Use atomic write to prevent corruption on crash
+            from src.utils.atomic_write import atomic_write_json
+            atomic_write_json(self.status_file, status, indent=2)
         except IOError as e:
             logger.error(f"Error saving status: {e}")
 

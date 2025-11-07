@@ -13,6 +13,7 @@ from pathlib import Path
 from typing import Dict, Any, List, Optional, Set
 import json
 import logging
+import threading
 from dataclasses import dataclass, field, asdict
 from datetime import datetime
 
@@ -271,7 +272,7 @@ class MultiRepositoryManager:
         incremental: bool
     ) -> Dict[str, Any]:
         """
-        Index repositories in parallel.
+        Index repositories in parallel with thread safety.
 
         Args:
             query_engine: Query engine instance
@@ -285,13 +286,30 @@ class MultiRepositoryManager:
 
         results = {}
 
+        # CRITICAL FIX: Add lock for thread-safe access to shared query_engine
+        config_lock = threading.Lock()
+
         def index_repo(repo: Repository):
             try:
-                # Note: This is simplified - in production, would need separate
-                # query engine instances for true parallelism
                 logger.info(f"Indexing repository: {repo.name}")
 
-                stats = query_engine.index_codebase(incremental=incremental)
+                # CRITICAL FIX: Thread-safe config modification
+                with config_lock:
+                    # Save original path
+                    original_path = query_engine.config.get('codebase_path')
+
+                    # Set repository path
+                    query_engine.config['codebase_path'] = repo.path
+
+                    try:
+                        # Index with repository path set
+                        stats = query_engine.index_codebase(
+                            incremental=incremental,
+                            use_git=True
+                        )
+                    finally:
+                        # Always restore original path
+                        query_engine.config['codebase_path'] = original_path
 
                 return repo.id, {
                     'success': True,
@@ -307,7 +325,10 @@ class MultiRepositoryManager:
                     'error': str(e)
                 }
 
-        with ThreadPoolExecutor(max_workers=3) as executor:
+        # Limit parallelism to avoid overwhelming the system
+        max_workers = min(3, len(repositories))
+
+        with ThreadPoolExecutor(max_workers=max_workers) as executor:
             futures = {executor.submit(index_repo, repo): repo for repo in repositories}
 
             for future in as_completed(futures):

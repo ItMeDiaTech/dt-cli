@@ -112,19 +112,36 @@ class VectorStore:
 
         logger.debug(f"Querying vector store for top {n_results} results")
 
-        results = self.collection.query(
-            query_embeddings=query_embeddings,
-            n_results=n_results,
-            where=where
-        )
+        # HIGH PRIORITY FIX: Add error handling
+        try:
+            results = self.collection.query(
+                query_embeddings=query_embeddings,
+                n_results=n_results,
+                where=where
+            )
+            return results
 
-        return results
+        except Exception as e:
+            logger.error(f"Error querying vector store: {e}")
+            # Return empty results instead of crashing
+            return {
+                'ids': [],
+                'documents': [],
+                'metadatas': [],
+                'distances': []
+            }
 
     def delete_collection(self):
         """Delete the entire collection."""
         self.initialize()
-        self.client.delete_collection(name=self.collection_name)
-        logger.info(f"Collection '{self.collection_name}' deleted")
+
+        # HIGH PRIORITY FIX: Add error handling
+        try:
+            self.client.delete_collection(name=self.collection_name)
+            logger.info(f"Collection '{self.collection_name}' deleted")
+        except Exception as e:
+            logger.error(f"Error deleting collection: {e}")
+            raise
 
     def get_count(self) -> int:
         """Get the number of documents in the collection."""

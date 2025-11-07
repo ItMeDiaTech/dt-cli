@@ -43,13 +43,15 @@ class IncrementalIndexer:
 
     def save_manifest(self, manifest: Dict[str, float]):
         """
-        Save current file modification times.
+        Save current file modification times atomically.
 
         Args:
             manifest: Dictionary of file paths to modification times
         """
         try:
-            self.manifest_path.write_text(json.dumps(manifest, indent=2))
+            # CRITICAL FIX: Use atomic write to prevent corruption on crash
+            from src.utils.atomic_write import atomic_write_json
+            atomic_write_json(self.manifest_path, manifest, indent=2)
         except IOError as e:
             logger.error(f"Error saving manifest: {e}")
 
