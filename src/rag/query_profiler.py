@@ -218,6 +218,8 @@ class QueryProfiler:
         """
         Get current memory usage.
 
+        MEDIUM PRIORITY FIX: Enhanced error handling for memory tracking.
+
         Returns:
             Memory usage in MB or None
         """
@@ -226,11 +228,34 @@ class QueryProfiler:
             import os
 
             process = psutil.Process(os.getpid())
-            return process.memory_info().rss / 1024 / 1024
+            memory_info = process.memory_info()
+
+            # MEDIUM PRIORITY FIX: Validate memory_info has RSS attribute
+            if not hasattr(memory_info, 'rss'):
+                logger.warning("Memory info missing RSS attribute")
+                return None
+
+            rss_bytes = memory_info.rss
+
+            # MEDIUM PRIORITY FIX: Validate reasonable value
+            if rss_bytes < 0 or rss_bytes > 1e12:  # More than 1TB is suspicious
+                logger.warning(f"Suspicious memory value: {rss_bytes} bytes")
+                return None
+
+            return rss_bytes / 1024 / 1024
 
         except ImportError:
+            # psutil not available - this is expected and not an error
             return None
-        except Exception:
+
+        except (OSError, AttributeError) as e:
+            # Process or OS issues
+            logger.debug(f"Could not get memory usage: {e}")
+            return None
+
+        except Exception as e:
+            # Unexpected errors
+            logger.warning(f"Unexpected error getting memory usage: {e}")
             return None
 
     def print_report(self):

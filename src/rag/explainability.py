@@ -18,6 +18,8 @@ logger = logging.getLogger(__name__)
 class ResultExplainer:
     """
     Explains why search results were returned.
+
+    MEDIUM PRIORITY FIX: Added result structure validation.
     """
 
     def __init__(self):
@@ -33,6 +35,8 @@ class ResultExplainer:
         """
         Generate explanation for a single result.
 
+        MEDIUM PRIORITY FIX: Validate result structure.
+
         Args:
             query: Search query
             result: Search result
@@ -41,17 +45,41 @@ class ResultExplainer:
         Returns:
             Explanation dictionary
         """
-        explanation = {
-            'result_id': result.get('id'),
-            'relevance_score': result.get('score', 0),
-            'score_breakdown': score_breakdown or {},
-            'matched_terms': self._find_matched_terms(query, result),
-            'context_snippets': self._extract_context_snippets(query, result),
-            'similarity_explanation': self._explain_similarity(query, result),
-            'ranking_factors': self._explain_ranking_factors(result, score_breakdown)
-        }
+        # MEDIUM PRIORITY FIX: Validate result structure
+        if not isinstance(result, dict):
+            logger.error(f"Invalid result type: expected dict, got {type(result)}")
+            return {
+                'error': 'Invalid result format',
+                'result_id': None,
+                'relevance_score': 0
+            }
 
-        return explanation
+        # MEDIUM PRIORITY FIX: Validate query is non-empty
+        if not query or not isinstance(query, str):
+            logger.warning(f"Invalid query: {query}")
+            query = ""
+
+        # MEDIUM PRIORITY FIX: Handle missing or invalid fields gracefully
+        try:
+            explanation = {
+                'result_id': result.get('id'),
+                'relevance_score': result.get('score', result.get('distance', 0)),
+                'score_breakdown': score_breakdown or {},
+                'matched_terms': self._find_matched_terms(query, result),
+                'context_snippets': self._extract_context_snippets(query, result),
+                'similarity_explanation': self._explain_similarity(query, result),
+                'ranking_factors': self._explain_ranking_factors(result, score_breakdown)
+            }
+
+            return explanation
+
+        except Exception as e:
+            logger.error(f"Error generating explanation: {e}")
+            return {
+                'error': f'Explanation generation failed: {str(e)}',
+                'result_id': result.get('id'),
+                'relevance_score': result.get('score', 0)
+            }
 
     def explain_results(
         self,
@@ -98,6 +126,8 @@ class ResultExplainer:
         """
         Find matched terms between query and result.
 
+        MEDIUM PRIORITY FIX: Handle malformed result content.
+
         Args:
             query: Search query
             result: Search result
@@ -105,43 +135,64 @@ class ResultExplainer:
         Returns:
             List of matched terms with positions
         """
-        content = result.get('content', '')
-        metadata = result.get('metadata', {})
+        # MEDIUM PRIORITY FIX: Validate and sanitize inputs
+        try:
+            content = result.get('content', result.get('text', ''))
 
-        # Tokenize query
-        query_terms = set(self._tokenize(query.lower()))
+            # Handle non-string content
+            if not isinstance(content, str):
+                logger.warning(f"Non-string content in result: {type(content)}")
+                content = str(content) if content else ''
 
-        matched_terms = []
+            metadata = result.get('metadata', {})
+            if not isinstance(metadata, dict):
+                logger.warning(f"Invalid metadata type: {type(metadata)}")
+                metadata = {}
 
-        # Find exact matches
-        for term in query_terms:
-            if term in content.lower():
-                # Find positions
-                positions = [
-                    m.start() for m in re.finditer(
-                        re.escape(term),
-                        content.lower()
-                    )
-                ]
+            # Tokenize query safely
+            if not query:
+                return []
 
-                if positions:
-                    matched_terms.append({
-                        'term': term,
-                        'type': 'exact',
-                        'count': len(positions),
-                        'positions': positions[:5]  # Limit to first 5
-                    })
+            query_terms = set(self._tokenize(query.lower()))
 
-        # Check metadata matches
-        file_path = metadata.get('file_path', '')
-        if any(term in file_path.lower() for term in query_terms):
-            matched_terms.append({
-                'term': 'filename',
-                'type': 'metadata',
-                'matched_in': 'file_path'
-            })
+            matched_terms = []
 
-        return matched_terms
+            # Find exact matches
+            for term in query_terms:
+                if not term:
+                    continue
+
+                if term in content.lower():
+                    # Find positions
+                    positions = [
+                        m.start() for m in re.finditer(
+                            re.escape(term),
+                            content.lower()
+                        )
+                    ]
+
+                    if positions:
+                        matched_terms.append({
+                            'term': term,
+                            'type': 'exact',
+                            'count': len(positions),
+                            'positions': positions[:5]  # Limit to first 5
+                        })
+
+            # Check metadata matches
+            file_path = metadata.get('file_path', '')
+            if isinstance(file_path, str) and any(term in file_path.lower() for term in query_terms if term):
+                matched_terms.append({
+                    'term': 'filename',
+                    'type': 'metadata',
+                    'matched_in': 'file_path'
+                })
+
+            return matched_terms
+
+        except Exception as e:
+            logger.error(f"Error finding matched terms: {e}")
+            return []
 
     def _extract_context_snippets(
         self,

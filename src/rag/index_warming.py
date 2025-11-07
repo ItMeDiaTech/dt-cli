@@ -108,6 +108,8 @@ class IndexWarmer:
         """
         Pre-load ML models to memory.
 
+        MEDIUM PRIORITY FIX: Validate query engine and handle errors.
+
         Returns:
             Model loading statistics
         """
@@ -115,14 +117,22 @@ class IndexWarmer:
 
         models_loaded = 0
 
+        # MEDIUM PRIORITY FIX: Validate query engine before warming
+        if not self.query_engine:
+            logger.error("Query engine not available for warming")
+            return {'models_loaded': 0, 'error': 'No query engine'}
+
         try:
             # Load embedding model
             if hasattr(self.query_engine, 'embedding_engine'):
                 if hasattr(self.query_engine.embedding_engine, 'model'):
-                    # Trigger model loading
-                    _ = self.query_engine.embedding_engine.encode(["warmup"])
-                    models_loaded += 1
-                    logger.info("Embedding model loaded")
+                    # MEDIUM PRIORITY FIX: Handle encode failures
+                    try:
+                        _ = self.query_engine.embedding_engine.encode(["warmup"])
+                        models_loaded += 1
+                        logger.info("Embedding model loaded")
+                    except Exception as e:
+                        logger.error(f"Failed to load embedding model: {e}")
 
             # Load reranking model if exists
             if hasattr(self.query_engine, 'reranker'):

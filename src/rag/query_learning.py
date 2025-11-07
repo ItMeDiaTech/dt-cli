@@ -451,22 +451,72 @@ class QueryLearningSystem:
         return sorted_values[min(index, len(sorted_values) - 1)]
 
     def _load_history(self):
-        """Load history from file."""
+        """
+        Load history from file.
+
+        MEDIUM PRIORITY FIX: Validate loaded history structure.
+        """
         if not self.history_file.exists():
             return
 
         try:
             data = json.loads(self.history_file.read_text())
 
-            self.history = [
-                QueryHistoryEntry.from_dict(entry)
-                for entry in data.get('entries', [])
-            ]
+            # MEDIUM PRIORITY FIX: Validate structure
+            if not isinstance(data, dict):
+                raise ValueError(f"Invalid history format: expected dict, got {type(data)}")
 
-            logger.info(f"Loaded {len(self.history)} query history entries")
+            if 'entries' not in data:
+                logger.warning("History file missing 'entries' field, treating as empty")
+                return
+
+            if not isinstance(data['entries'], list):
+                raise ValueError(f"Invalid entries format: expected list, got {type(data['entries'])}")
+
+            # MEDIUM PRIORITY FIX: Validate and load entries with error recovery
+            loaded_count = 0
+            errors = 0
+
+            for idx, entry_data in enumerate(data['entries']):
+                try:
+                    # Validate entry structure
+                    if not isinstance(entry_data, dict):
+                        logger.warning(f"Skipping invalid entry at index {idx}: not a dict")
+                        errors += 1
+                        continue
+
+                    # Check required fields
+                    required_fields = ['query', 'results_count']
+                    missing_fields = [f for f in required_fields if f not in entry_data]
+
+                    if missing_fields:
+                        logger.warning(
+                            f"Skipping entry at index {idx}: missing fields {missing_fields}"
+                        )
+                        errors += 1
+                        continue
+
+                    # Load entry
+                    entry = QueryHistoryEntry.from_dict(entry_data)
+                    self.history.append(entry)
+                    loaded_count += 1
+
+                except Exception as e:
+                    logger.warning(f"Error loading entry at index {idx}: {e}")
+                    errors += 1
+
+            logger.info(
+                f"Loaded {loaded_count} query history entries "
+                f"({errors} errors, {len(self.history)} total)"
+            )
+
+        except json.JSONDecodeError as e:
+            logger.error(f"Corrupted history file: {e}. Starting with empty history.")
+            self.history = []
 
         except Exception as e:
-            logger.error(f"Error loading query history: {e}")
+            logger.error(f"Error loading query history: {e}. Starting with empty history.")
+            self.history = []
 
     def _save_history(self):
         """

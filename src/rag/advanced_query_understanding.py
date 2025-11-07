@@ -33,7 +33,12 @@ class QueryIntent:
 class AdvancedQueryParser:
     """
     Advanced query parser with NLP capabilities.
+
+    MEDIUM PRIORITY FIX: Added input validation for all operations.
     """
+
+    # MEDIUM PRIORITY FIX: Maximum query length to prevent abuse
+    MAX_QUERY_LENGTH = 10000
 
     def __init__(self):
         """Initialize query parser."""
@@ -113,24 +118,75 @@ class AdvancedQueryParser:
         """
         Parse query with advanced NLP understanding.
 
+        MEDIUM PRIORITY FIX: Validate input before processing.
+
         Args:
             query: User query
 
         Returns:
             Parsed query information
         """
-        result = {
-            'original_query': query,
-            'intent': self._classify_intent(query),
-            'entities': self._extract_entities(query),
-            'keywords': self._extract_keywords(query),
-            'expanded_query': self._expand_query(query),
-            'reformulated_queries': self._reformulate_query(query),
-            'is_question': self._is_question(query),
-            'complexity': self._assess_complexity(query)
-        }
+        # MEDIUM PRIORITY FIX: Validate input
+        if not isinstance(query, str):
+            logger.error(f"Invalid query type: expected str, got {type(query)}")
+            return {
+                'error': 'Invalid query type',
+                'original_query': '',
+                'intent': QueryIntent.UNKNOWN,
+                'entities': {},
+                'keywords': [],
+                'expanded_query': '',
+                'reformulated_queries': [],
+                'is_question': False,
+                'complexity': 'simple'
+            }
 
-        return result
+        # MEDIUM PRIORITY FIX: Check length limit
+        if len(query) > self.MAX_QUERY_LENGTH:
+            logger.warning(f"Query too long ({len(query)} chars), truncating to {self.MAX_QUERY_LENGTH}")
+            query = query[:self.MAX_QUERY_LENGTH]
+
+        # MEDIUM PRIORITY FIX: Handle empty query
+        if not query.strip():
+            logger.warning("Empty query provided")
+            return {
+                'original_query': query,
+                'intent': QueryIntent.UNKNOWN,
+                'entities': {},
+                'keywords': [],
+                'expanded_query': query,
+                'reformulated_queries': [],
+                'is_question': False,
+                'complexity': 'simple'
+            }
+
+        try:
+            result = {
+                'original_query': query,
+                'intent': self._classify_intent(query),
+                'entities': self._extract_entities(query),
+                'keywords': self._extract_keywords(query),
+                'expanded_query': self._expand_query(query),
+                'reformulated_queries': self._reformulate_query(query),
+                'is_question': self._is_question(query),
+                'complexity': self._assess_complexity(query)
+            }
+
+            return result
+
+        except Exception as e:
+            logger.error(f"Error parsing query: {e}")
+            return {
+                'error': f'Parsing failed: {str(e)}',
+                'original_query': query,
+                'intent': QueryIntent.UNKNOWN,
+                'entities': {},
+                'keywords': [],
+                'expanded_query': query,
+                'reformulated_queries': [],
+                'is_question': False,
+                'complexity': 'simple'
+            }
 
     def _classify_intent(self, query: str) -> str:
         """

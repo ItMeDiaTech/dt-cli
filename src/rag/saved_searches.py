@@ -415,21 +415,72 @@ class SavedSearchManager:
         return hashlib.md5(hash_input.encode()).hexdigest()[:12]
 
     def _load_searches(self):
-        """Load searches from file."""
+        """
+        Load searches from file.
+
+        MEDIUM PRIORITY FIX: Validate loaded search structure.
+        """
         if not self.storage_file.exists():
             return
 
         try:
             data = json.loads(self.storage_file.read_text())
 
-            for search_data in data.get('searches', []):
-                search = SavedSearch.from_dict(search_data)
-                self.searches[search.id] = search
+            # MEDIUM PRIORITY FIX: Validate structure
+            if not isinstance(data, dict):
+                raise ValueError(f"Invalid searches format: expected dict, got {type(data)}")
 
-            logger.info(f"Loaded {len(self.searches)} saved searches")
+            if 'searches' not in data:
+                logger.warning("Searches file missing 'searches' field, treating as empty")
+                return
+
+            if not isinstance(data['searches'], list):
+                raise ValueError(f"Invalid searches format: expected list, got {type(data['searches'])}")
+
+            # MEDIUM PRIORITY FIX: Validate and load searches with error recovery
+            loaded_count = 0
+            errors = 0
+
+            for idx, search_data in enumerate(data['searches']):
+                try:
+                    # Validate search structure
+                    if not isinstance(search_data, dict):
+                        logger.warning(f"Skipping invalid search at index {idx}: not a dict")
+                        errors += 1
+                        continue
+
+                    # Check required fields
+                    required_fields = ['id', 'name', 'query']
+                    missing_fields = [f for f in required_fields if f not in search_data]
+
+                    if missing_fields:
+                        logger.warning(
+                            f"Skipping search at index {idx}: missing fields {missing_fields}"
+                        )
+                        errors += 1
+                        continue
+
+                    # Load search
+                    search = SavedSearch.from_dict(search_data)
+                    self.searches[search.id] = search
+                    loaded_count += 1
+
+                except Exception as e:
+                    logger.warning(f"Error loading search at index {idx}: {e}")
+                    errors += 1
+
+            logger.info(
+                f"Loaded {loaded_count} saved searches "
+                f"({errors} errors, {len(self.searches)} total)"
+            )
+
+        except json.JSONDecodeError as e:
+            logger.error(f"Corrupted searches file: {e}. Starting with empty searches.")
+            self.searches = {}
 
         except Exception as e:
-            logger.error(f"Error loading saved searches: {e}")
+            logger.error(f"Error loading saved searches: {e}. Starting with empty searches.")
+            self.searches = {}
 
     def _save_searches(self):
         """
