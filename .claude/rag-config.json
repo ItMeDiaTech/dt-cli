@@ -1,0 +1,40 @@
+{
+  "rag": {
+    "embedding_model": "all-MiniLM-L6-v2",
+    "chunk_size": 1000,
+    "chunk_overlap": 200,
+    "max_results": 5,
+    "persist_directory": "./.rag_data"
+  },
+  "maf": {
+    "enabled": true,
+    "agents": {
+      "code_analyzer": true,
+      "doc_retriever": true,
+      "synthesizer": true,
+      "suggestion_generator": true
+    }
+  },
+  "mcp": {
+    "host": "127.0.0.1",
+    "port": 8765,
+    "auto_start": true
+  },
+  "indexing": {
+    "auto_index_on_start": true,
+    "file_extensions": [
+      ".py", ".js", ".ts", ".jsx", ".tsx",
+      ".java", ".cpp", ".c", ".h", ".cs",
+      ".go", ".rs", ".rb", ".php", ".swift",
+      ".kt", ".scala", ".sh", ".bash", ".sql",
+      ".html", ".css", ".scss", ".json",
+      ".yaml", ".yml", ".xml", ".md", ".rst"
+    ],
+    "ignore_directories": [
+      "node_modules", ".git", ".venv", "venv",
+      "__pycache__", ".pytest_cache", "dist",
+      "build", ".next", ".nuxt", "coverage",
+      ".rag_data", ".claude"
+    ]
+  }
+}

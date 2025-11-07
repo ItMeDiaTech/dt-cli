@@ -1,0 +1,32 @@
+{
+  "mcpServers": {
+    "rag-maf-plugin": {
+      "url": "http://127.0.0.1:8765",
+      "description": "Local RAG with Multi-Agent Framework for context-aware development",
+      "enabled": true,
+      "autoStart": true,
+      "tools": [
+        {
+          "name": "rag_query",
+          "description": "Query the RAG system for relevant code and documentation"
+        },
+        {
+          "name": "rag_index",
+          "description": "Index the codebase for RAG search"
+        },
+        {
+          "name": "rag_status",
+          "description": "Get the status of the RAG system"
+        },
+        {
+          "name": "maf_orchestrate",
+          "description": "Orchestrate multiple agents for complex queries"
+        },
+        {
+          "name": "maf_status",
+          "description": "Get the status of the Multi-Agent Framework"
+        }
+      ]
+    }
+  }
+}

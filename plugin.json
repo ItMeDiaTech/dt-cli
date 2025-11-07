@@ -1,0 +1,34 @@
+{
+  "name": "dt-cli-rag-maf",
+  "version": "1.0.0",
+  "description": "Local RAG plugin with Multi-Agent Framework orchestration for Claude Code",
+  "author": "ItMeDiaTech",
+  "license": "MIT",
+  "repository": "https://github.com/ItMeDiaTech/dt-cli",
+  "keywords": ["rag", "maf", "embeddings", "vector-search", "multi-agent", "mcp"],
+  "requires": {
+    "claude-code": ">=1.0.0",
+    "python": ">=3.8"
+  },
+  "install": {
+    "script": "./install.sh",
+    "hooks": true,
+    "mcp": true,
+    "commands": true
+  },
+  "components": {
+    "rag": {
+      "enabled": true,
+      "embedding_model": "all-MiniLM-L6-v2",
+      "vector_store": "chromadb"
+    },
+    "maf": {
+      "enabled": true,
+      "framework": "langgraph"
+    },
+    "mcp": {
+      "enabled": true,
+      "port": 8765
+    }
+  }
+}
