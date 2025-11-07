@@ -118,10 +118,13 @@ class SetupManager:
             return False
 
         try:
-            subprocess.run(
+            # HIGH PRIORITY FIX: Stream output instead of suppressing it
+            # Users need to see pip progress and error messages for debugging
+            result = subprocess.run(
                 [sys.executable, '-m', 'pip', 'install', '-r', str(requirements_file)],
                 check=True,
-                capture_output=True
+                # Remove capture_output to show output to user
+                text=True
             )
 
             print("✅ Dependencies installed")
@@ -130,6 +133,7 @@ class SetupManager:
 
         except subprocess.CalledProcessError as e:
             print(f"❌ Installation failed: {e}")
+            print("Check pip output above for details")
             self.errors.append(f"Dependency installation: {e}")
             return False
 

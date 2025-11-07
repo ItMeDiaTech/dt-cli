@@ -503,6 +503,9 @@ class SnippetManager:
         """
         Generate unique ID for snippet.
 
+        HIGH PRIORITY FIX: Removed timestamp from ID generation.
+        Identical code+title should get same ID for deduplication.
+
         Args:
             code: Code content
             title: Snippet title
@@ -510,7 +513,8 @@ class SnippetManager:
         Returns:
             Unique ID
         """
-        content = f"{title}_{code}_{datetime.now().isoformat()}"
+        # HIGH PRIORITY FIX: Remove timestamp - identical snippets should have same ID
+        content = f"{title}_{code}"
         return hashlib.md5(content.encode()).hexdigest()[:12]
 
     def _detect_language(self, file_path: str) -> str:
