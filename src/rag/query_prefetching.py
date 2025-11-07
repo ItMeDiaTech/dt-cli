@@ -95,6 +95,7 @@ class QueryPrefetcher:
         # MEDIUM PRIORITY FIX: Add query timeout and run limit
         self.query_timeout_seconds = 30
         self.max_prefetches_per_run = 100
+        self._prefetches_this_run = 0
 
     def record_query(self, query: str):
         """
@@ -250,9 +251,23 @@ class QueryPrefetcher:
         logger.info("Query prefetching stopped")
 
     def _prefetch_worker(self):
-        """Background worker for prefetching queries."""
+        """
+        Background worker for prefetching queries.
+
+        MEDIUM PRIORITY FIX: Enforce prefetch limits and timeouts.
+        """
         while self.running:
             try:
+                # MEDIUM PRIORITY FIX: Check if limit reached
+                if self._prefetches_this_run >= self.max_prefetches_per_run:
+                    logger.info(
+                        f"Prefetch limit reached ({self.max_prefetches_per_run}), "
+                        "pausing for 60 seconds"
+                    )
+                    time.sleep(60)
+                    self._prefetches_this_run = 0
+                    continue
+
                 with self.lock:
                     if not self.prefetch_queue:
                         # No queries to prefetch
@@ -273,7 +288,17 @@ class QueryPrefetcher:
                 logger.info(f"Prefetching query: {query[:30]}")
 
                 try:
+                    # MEDIUM PRIORITY FIX: Add timeout for query execution
+                    query_start = time.time()
                     results = self.query_engine.query(query, n_results=5)
+                    query_duration = time.time() - query_start
+
+                    # MEDIUM PRIORITY FIX: Warn if query took too long
+                    if query_duration > self.query_timeout_seconds:
+                        logger.warning(
+                            f"Prefetch query took {query_duration:.2f}s "
+                            f"(limit: {self.query_timeout_seconds}s)"
+                        )
 
                     # Cache results
                     if self.cache_manager:
@@ -283,7 +308,10 @@ class QueryPrefetcher:
                             metadata={'prefetched': True}
                         )
 
-                    logger.debug(f"Prefetched {len(results)} results")
+                    logger.debug(f"Prefetched {len(results)} results in {query_duration:.2f}s")
+
+                    # MEDIUM PRIORITY FIX: Track prefetch count
+                    self._prefetches_this_run += 1
 
                 except Exception as e:
                     logger.error(f"Prefetch failed for '{query[:30]}': {e}")

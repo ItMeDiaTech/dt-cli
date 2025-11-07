@@ -92,6 +92,10 @@ class QueryLearningSystem:
     MEDIUM PRIORITY FIX: Added thread safety and atomic operations.
     """
 
+    # MEDIUM PRIORITY FIX: Add memory limits to prevent unbounded growth
+    MAX_HISTORY_SIZE = 10000
+    DEFAULT_SAVE_LIMIT = 1000
+
     def __init__(self, history_file: Optional[Path] = None):
         """
         Initialize query learning system.
@@ -138,9 +142,16 @@ class QueryLearningSystem:
             correlation_id=correlation_id
         )
 
-        # MEDIUM PRIORITY FIX: Thread-safe append
+        # MEDIUM PRIORITY FIX: Thread-safe append with memory limit
         with self._history_lock:
             self.history.append(entry)
+
+            # MEDIUM PRIORITY FIX: Enforce memory limit by trimming old entries
+            if len(self.history) > self.MAX_HISTORY_SIZE:
+                trim_count = len(self.history) - self.MAX_HISTORY_SIZE
+                logger.info(f"Trimming {trim_count} old history entries (limit: {self.MAX_HISTORY_SIZE})")
+                self.history = self.history[-self.MAX_HISTORY_SIZE:]
+
             should_save = len(self.history) % 10 == 0
 
         # Auto-save periodically (outside lock to avoid blocking)
@@ -528,9 +539,9 @@ class QueryLearningSystem:
         import os
 
         try:
-            # MEDIUM PRIORITY FIX: Thread-safe copy of entries
+            # MEDIUM PRIORITY FIX: Thread-safe copy of entries with limit
             with self._history_lock:
-                entries_to_save = self.history[-1000:]
+                entries_to_save = self.history[-self.DEFAULT_SAVE_LIMIT:]
 
             data = {
                 'version': '1.0',
@@ -612,6 +623,38 @@ class QueryLearningSystem:
         if removed_count > 0:
             self._save_history()
             logger.info(f"Cleared {removed_count} old history entries")
+
+    def get_resource_stats(self) -> Dict[str, Any]:
+        """
+        Get resource usage statistics.
+
+        MEDIUM PRIORITY FIX: Track memory and storage usage.
+
+        Returns:
+            Resource statistics
+        """
+        with self._history_lock:
+            history_count = len(self.history)
+
+        # Estimate memory usage (rough approximation)
+        estimated_memory_mb = history_count * 0.001  # ~1KB per entry
+
+        stats = {
+            'history_count': history_count,
+            'max_history_size': self.MAX_HISTORY_SIZE,
+            'utilization_percent': (history_count / self.MAX_HISTORY_SIZE) * 100,
+            'estimated_memory_mb': estimated_memory_mb,
+            'save_limit': self.DEFAULT_SAVE_LIMIT
+        }
+
+        # Check if history file exists and get size
+        if self.history_file.exists():
+            file_size_bytes = self.history_file.stat().st_size
+            stats['file_size_mb'] = file_size_bytes / (1024 * 1024)
+        else:
+            stats['file_size_mb'] = 0
+
+        return stats
 
 
 # Global instance

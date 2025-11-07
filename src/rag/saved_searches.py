@@ -51,6 +51,9 @@ class SavedSearchManager:
     MEDIUM PRIORITY FIX: Added thread safety and atomic operations.
     """
 
+    # MEDIUM PRIORITY FIX: Add limit to prevent unbounded growth
+    MAX_SEARCHES = 1000
+
     def __init__(self, storage_file: Optional[Path] = None):
         """
         Initialize saved search manager.
@@ -105,8 +108,21 @@ class SavedSearchManager:
             filters=filters or {}
         )
 
-        # MEDIUM PRIORITY FIX: Thread-safe dictionary update
+        # MEDIUM PRIORITY FIX: Thread-safe dictionary update with size limit
         with self._searches_lock:
+            # MEDIUM PRIORITY FIX: Enforce limit by removing least-used searches
+            if len(self.searches) >= self.MAX_SEARCHES and search_id not in self.searches:
+                # Find and remove least-used search
+                least_used = min(
+                    self.searches.values(),
+                    key=lambda s: (s.use_count, s.created_at)
+                )
+                logger.info(
+                    f"Removing least-used search '{least_used.name}' "
+                    f"to stay within limit ({self.MAX_SEARCHES})"
+                )
+                del self.searches[least_used.id]
+
             self.searches[search_id] = search
             self._save_searches()
 
@@ -395,6 +411,37 @@ class SavedSearchManager:
                 matches.append(search)
 
         return matches
+
+    def get_resource_stats(self) -> Dict[str, Any]:
+        """
+        Get resource usage statistics.
+
+        MEDIUM PRIORITY FIX: Track storage and size usage.
+
+        Returns:
+            Resource statistics
+        """
+        with self._searches_lock:
+            search_count = len(self.searches)
+
+        # Estimate memory usage (rough approximation)
+        estimated_memory_mb = search_count * 0.002  # ~2KB per search
+
+        stats = {
+            'search_count': search_count,
+            'max_searches': self.MAX_SEARCHES,
+            'utilization_percent': (search_count / self.MAX_SEARCHES) * 100,
+            'estimated_memory_mb': estimated_memory_mb
+        }
+
+        # Check if storage file exists and get size
+        if self.storage_file.exists():
+            file_size_bytes = self.storage_file.stat().st_size
+            stats['file_size_mb'] = file_size_bytes / (1024 * 1024)
+        else:
+            stats['file_size_mb'] = 0
+
+        return stats
 
     def _generate_id(self, name: str) -> str:
         """
