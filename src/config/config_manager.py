@@ -378,9 +378,15 @@ class SecureConfigManager(ConfigManager):
 
         credentials[key] = value
 
-        # Write with restricted permissions
-        self.credentials_path.write_text(json.dumps(credentials, indent=2))
-        os.chmod(self.credentials_path, 0o600)
+        # CRITICAL FIX: Create file with restricted permissions from the start
+        # Prevents race condition where file is temporarily world-readable
+        fd = os.open(
+            self.credentials_path,
+            os.O_WRONLY | os.O_CREAT | os.O_TRUNC,
+            mode=0o600  # Restricted permissions from creation
+        )
+        with os.fdopen(fd, 'w') as f:
+            json.dump(credentials, f, indent=2)
 
         logger.info(f"Credential set: {key}")
 
