@@ -13,6 +13,7 @@ Supports exporting/importing:
 import json
 import tarfile
 import shutil
+import tempfile
 from pathlib import Path
 from typing import Dict, Any, Optional, List
 from datetime import datetime
@@ -47,9 +48,9 @@ class DataExporter:
         """
         logger.info(f"Exporting data to {output_path}...")
 
-        # Create temporary export directory
-        temp_dir = Path(f"/tmp/rag_export_{datetime.now().strftime('%Y%m%d_%H%M%S')}")
-        temp_dir.mkdir(parents=True, exist_ok=True)
+        # HIGH PRIORITY FIX: Use tempfile.mkdtemp() instead of hard-coded /tmp
+        # Works across all platforms and respects TMPDIR environment variable
+        temp_dir = Path(tempfile.mkdtemp(prefix="rag_export_"))
 
         try:
             # Export metadata
@@ -229,9 +230,9 @@ class DataImporter:
         """
         logger.info(f"Importing data from {archive_path}...")
 
-        # Create temporary import directory
-        temp_dir = Path(f"/tmp/rag_import_{datetime.now().strftime('%Y%m%d_%H%M%S')}")
-        temp_dir.mkdir(parents=True, exist_ok=True)
+        # HIGH PRIORITY FIX: Use tempfile.mkdtemp() instead of hard-coded /tmp
+        # Works across all platforms and respects TMPDIR environment variable
+        temp_dir = Path(tempfile.mkdtemp(prefix="rag_import_"))
 
         try:
             # CRITICAL FIX: Extract archive with path traversal protection

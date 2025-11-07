@@ -5,6 +5,7 @@ Incremental indexing with file change tracking.
 import json
 import os
 import hashlib
+import threading
 from pathlib import Path
 from typing import Dict, List, Set, Optional, Tuple
 import logging
@@ -26,6 +27,8 @@ class IncrementalIndexer:
         """
         self.manifest_path = Path(manifest_path)
         self.manifest_path.parent.mkdir(exist_ok=True)
+        # HIGH PRIORITY FIX: Add lock for thread-safe manifest operations
+        self._manifest_lock = threading.Lock()
 
     def _compute_file_hash(self, file_path: Path) -> str:
         """
@@ -86,6 +89,7 @@ class IncrementalIndexer:
         Find files that changed since last indexing.
 
         HIGH PRIORITY FIX: Uses hybrid mtime + content hash for reliable detection.
+        HIGH PRIORITY FIX: Thread-safe manifest operations with lock.
 
         Args:
             all_files: List of all files in codebase
@@ -94,65 +98,67 @@ class IncrementalIndexer:
         Returns:
             List of changed file paths
         """
-        manifest = self.load_manifest()
-        changed = []
-        updated_manifest = {}
+        # HIGH PRIORITY FIX: Protect entire manifest operation with lock
+        with self._manifest_lock:
+            manifest = self.load_manifest()
+            changed = []
+            updated_manifest = {}
 
-        for file_path in all_files:
-            try:
-                rel_path = str(file_path.relative_to(root_path))
-                mtime = file_path.stat().st_mtime
+            for file_path in all_files:
+                try:
+                    rel_path = str(file_path.relative_to(root_path))
+                    mtime = file_path.stat().st_mtime
 
-                # HIGH PRIORITY FIX: Hybrid approach
-                # Step 1: Fast mtime check
-                if rel_path not in manifest:
-                    # New file
-                    changed.append(file_path)
-                    content_hash = self._compute_file_hash(file_path)
-                    updated_manifest[rel_path] = {'mtime': mtime, 'hash': content_hash}
-                    logger.debug(f"New file: {rel_path}")
-                else:
-                    # Existing file: check if mtime changed
-                    old_data = manifest[rel_path]
-                    # Support old format (just float) and new format (dict)
-                    old_mtime = old_data if isinstance(old_data, (int, float)) else old_data.get('mtime', 0)
-
-                    if mtime != old_mtime:
-                        # mtime changed, verify with content hash
+                    # HIGH PRIORITY FIX: Hybrid approach
+                    # Step 1: Fast mtime check
+                    if rel_path not in manifest:
+                        # New file
+                        changed.append(file_path)
                         content_hash = self._compute_file_hash(file_path)
-                        old_hash = old_data.get('hash', '') if isinstance(old_data, dict) else ''
-
-                        if content_hash != old_hash:
-                            # Content actually changed
-                            changed.append(file_path)
-                            logger.debug(f"Changed (hash differs): {rel_path}")
-                        else:
-                            # mtime changed but content is same (e.g., touch command)
-                            logger.debug(f"mtime changed but content unchanged: {rel_path}")
-
                         updated_manifest[rel_path] = {'mtime': mtime, 'hash': content_hash}
+                        logger.debug(f"New file: {rel_path}")
                     else:
-                        # mtime unchanged, assume file unchanged
-                        updated_manifest[rel_path] = old_data
+                        # Existing file: check if mtime changed
+                        old_data = manifest[rel_path]
+                        # Support old format (just float) and new format (dict)
+                        old_mtime = old_data if isinstance(old_data, (int, float)) else old_data.get('mtime', 0)
 
-            except (OSError, ValueError) as e:
-                logger.warning(f"Error checking {file_path}: {e}")
+                        if mtime != old_mtime:
+                            # mtime changed, verify with content hash
+                            content_hash = self._compute_file_hash(file_path)
+                            old_hash = old_data.get('hash', '') if isinstance(old_data, dict) else ''
 
-        # Remove deleted files from manifest
-        current_files = {str(f.relative_to(root_path)) for f in all_files}
-        deleted = set(manifest.keys()) - current_files
+                            if content_hash != old_hash:
+                                # Content actually changed
+                                changed.append(file_path)
+                                logger.debug(f"Changed (hash differs): {rel_path}")
+                            else:
+                                # mtime changed but content is same (e.g., touch command)
+                                logger.debug(f"mtime changed but content unchanged: {rel_path}")
 
-        if deleted:
-            logger.info(f"Detected {len(deleted)} deleted files")
+                            updated_manifest[rel_path] = {'mtime': mtime, 'hash': content_hash}
+                        else:
+                            # mtime unchanged, assume file unchanged
+                            updated_manifest[rel_path] = old_data
 
-        # Save updated manifest
-        self.save_manifest(updated_manifest)
+                except (OSError, ValueError) as e:
+                    logger.warning(f"Error checking {file_path}: {e}")
 
-        logger.info(
-            f"Found {len(changed)} changed files out of {len(all_files)} total"
-        )
+            # Remove deleted files from manifest
+            current_files = {str(f.relative_to(root_path)) for f in all_files}
+            deleted = set(manifest.keys()) - current_files
 
-        return changed
+            if deleted:
+                logger.info(f"Detected {len(deleted)} deleted files")
+
+            # Save updated manifest
+            self.save_manifest(updated_manifest)
+
+            logger.info(
+                f"Found {len(changed)} changed files out of {len(all_files)} total"
+            )
+
+            return changed
 
     def get_stats(self) -> Dict[str, int]:
         """

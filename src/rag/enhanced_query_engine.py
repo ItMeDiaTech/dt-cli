@@ -250,18 +250,25 @@ class EnhancedQueryEngine:
         seen_ids = set()
 
         for query in expanded_queries:
-            # Perform search for this query variation
-            if use_hybrid and self.hybrid_search.is_available():
-                query_results = self._hybrid_query(query, n_results, file_type)
-            else:
-                query_results = self._semantic_query(query, n_results, file_type)
+            # HIGH PRIORITY FIX: Add error recovery for each query
+            try:
+                # Perform search for this query variation
+                if use_hybrid and self.hybrid_search.is_available():
+                    query_results = self._hybrid_query(query, n_results, file_type)
+                else:
+                    query_results = self._semantic_query(query, n_results, file_type)
 
-            # Merge results, deduplicating by ID
-            for result in query_results:
-                result_id = result.get('id') or result.get('text', '')[:100]
-                if result_id not in seen_ids:
-                    seen_ids.add(result_id)
-                    all_results.append(result)
+                # Merge results, deduplicating by ID
+                for result in query_results:
+                    result_id = result.get('id') or result.get('text', '')[:100]
+                    if result_id not in seen_ids:
+                        seen_ids.add(result_id)
+                        all_results.append(result)
+
+            except Exception as e:
+                logger.warning(f"Query failed for '{query}': {e}")
+                # Continue with next query expansion instead of failing completely
+                continue
 
         # Sort merged results by score (descending)
         all_results.sort(key=lambda x: x.get('score', 0), reverse=True)
@@ -270,12 +277,17 @@ class EnhancedQueryEngine:
         results = all_results[:n_results]
 
         # Rerank if requested
+        # HIGH PRIORITY FIX: Add error recovery for reranking
         if use_reranking and self.reranker and self.reranker.is_available():
-            results = self.reranker.rerank(
-                query_text,
-                results,
-                top_k=n_results
-            )
+            try:
+                results = self.reranker.rerank(
+                    query_text,
+                    results,
+                    top_k=n_results
+                )
+            except Exception as e:
+                logger.warning(f"Reranking failed, using original results: {e}")
+                # Continue with non-reranked results
 
         # Cache results
         if use_cache:
