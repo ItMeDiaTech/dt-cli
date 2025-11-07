@@ -215,20 +215,29 @@ class DataImporter:
         self,
         archive_path: Path,
         include_index: bool = False,
-        merge: bool = True
+        merge: bool = True,
+        max_archive_size_mb: int = 1000
     ) -> bool:
         """
         Import all system data.
+
+        HIGH PRIORITY FIX: Added archive integrity validation.
 
         Args:
             archive_path: Input archive path (.tar.gz)
             include_index: Import vector index
             merge: Merge with existing data (True) or replace (False)
+            max_archive_size_mb: Maximum archive size in MB (default: 1000MB)
 
         Returns:
             True if successful
         """
         logger.info(f"Importing data from {archive_path}...")
+
+        # HIGH PRIORITY FIX: Validate archive integrity before extraction
+        if not self._validate_archive(archive_path, max_archive_size_mb):
+            logger.error("Archive validation failed")
+            return False
 
         # HIGH PRIORITY FIX: Use tempfile.mkdtemp() instead of hard-coded /tmp
         # Works across all platforms and respects TMPDIR environment variable
@@ -281,6 +290,74 @@ class DataImporter:
             if temp_dir.exists():
                 shutil.rmtree(temp_dir)
 
+    def _validate_archive(self, archive_path: Path, max_size_mb: int) -> bool:
+        """
+        HIGH PRIORITY FIX: Validate archive integrity.
+
+        Args:
+            archive_path: Path to archive file
+            max_size_mb: Maximum allowed size in MB
+
+        Returns:
+            True if valid
+        """
+        # Check file exists
+        if not archive_path.exists():
+            logger.error(f"Archive does not exist: {archive_path}")
+            return False
+
+        # Check file is actually a file
+        if not archive_path.is_file():
+            logger.error(f"Archive path is not a file: {archive_path}")
+            return False
+
+        # Check file size
+        file_size_mb = archive_path.stat().st_size / (1024 * 1024)
+        if file_size_mb > max_size_mb:
+            logger.error(f"Archive too large: {file_size_mb:.1f}MB (max: {max_size_mb}MB)")
+            return False
+
+        # Minimum size check (should be at least 100 bytes for a valid archive)
+        if archive_path.stat().st_size < 100:
+            logger.error(f"Archive too small: {archive_path.stat().st_size} bytes")
+            return False
+
+        # Validate it's actually a gzip file (magic bytes)
+        try:
+            with open(archive_path, 'rb') as f:
+                magic = f.read(2)
+                if magic != b'\x1f\x8b':  # gzip magic bytes
+                    logger.error("Archive is not a valid gzip file")
+                    return False
+        except Exception as e:
+            logger.error(f"Error reading archive: {e}")
+            return False
+
+        # Try to open with tarfile to verify integrity
+        try:
+            with tarfile.open(archive_path, 'r:gz') as tar:
+                # Get list of members without extracting
+                members = tar.getmembers()
+
+                if len(members) == 0:
+                    logger.error("Archive is empty")
+                    return False
+
+                # Check for suspiciously large number of files
+                if len(members) > 100000:
+                    logger.error(f"Archive contains too many files: {len(members)}")
+                    return False
+
+                logger.info(f"Archive validated: {len(members)} files, {file_size_mb:.1f}MB")
+                return True
+
+        except tarfile.TarError as e:
+            logger.error(f"Archive is corrupted or invalid: {e}")
+            return False
+        except Exception as e:
+            logger.error(f"Error validating archive: {e}")
+            return False
+
     def _verify_metadata(self, import_dir: Path) -> bool:
         """
         Verify export metadata.
@@ -328,21 +405,49 @@ class DataImporter:
         logger.info("Query history import not yet implemented")
 
     def _import_configuration(self, import_dir: Path, merge: bool):
-        """Import configuration."""
+        """
+        Import configuration.
+
+        HIGH PRIORITY FIX: Use atomic writes for configuration files.
+        """
         try:
+            # Import atomic write utility
+            from src.utils.atomic_write import atomic_write_json
+
             config_import_dir = import_dir / 'config'
 
             if config_import_dir.exists():
                 config_dir = Path.home() / '.rag_config'
 
                 if not merge and config_dir.exists():
-                    shutil.rmtree(config_dir)
+                    # HIGH PRIORITY FIX: Backup before destructive operation
+                    backup_dir = Path.home() / '.rag_config.backup'
+                    if backup_dir.exists():
+                        shutil.rmtree(backup_dir)
+                    shutil.copytree(config_dir, backup_dir)
+
+                    try:
+                        shutil.rmtree(config_dir)
+                    except Exception as e:
+                        # Restore from backup
+                        logger.error(f"Failed to remove config dir, restoring backup: {e}")
+                        if backup_dir.exists():
+                            shutil.copytree(backup_dir, config_dir)
+                        raise
 
                 config_dir.mkdir(parents=True, exist_ok=True)
 
-                # Copy config files
+                # HIGH PRIORITY FIX: Copy config files atomically
                 for config_file in config_import_dir.glob('*.json'):
-                    shutil.copy(config_file, config_dir / config_file.name)
+                    try:
+                        # Read source file
+                        data = json.loads(config_file.read_text())
+                        # Write atomically to destination
+                        target_path = config_dir / config_file.name
+                        atomic_write_json(target_path, data)
+                    except Exception as e:
+                        logger.error(f"Failed to import {config_file.name}: {e}")
+                        raise
 
                 logger.info("Imported configuration")
 

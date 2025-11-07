@@ -41,6 +41,8 @@ class QueryExpander:
         """
         Expand query with synonyms.
 
+        HIGH PRIORITY FIX: Improved word boundary handling for edge cases.
+
         Args:
             query: Original query
             max_expansions: Maximum number of synonym expansions per term
@@ -52,19 +54,31 @@ class QueryExpander:
         words = query.lower().split()
 
         for word in words:
-            if word in self.SYNONYMS:
-                synonyms = self.SYNONYMS[word][:max_expansions]
+            # HIGH PRIORITY FIX: Strip punctuation before lookup
+            # Handle cases like "function," or "class."
+            clean_word = word.strip('.,!?;:()[]{}"\'-')
+
+            if clean_word in self.SYNONYMS:
+                synonyms = self.SYNONYMS[clean_word][:max_expansions]
 
                 for synonym in synonyms:
-                    # Replace word with synonym
+                    # HIGH PRIORITY FIX: Build pattern that handles word boundaries properly
+                    # Account for punctuation and ensure whole-word match
+                    # Pattern matches word with optional leading/trailing punctuation
+                    pattern = r'([.,!?;:()[\]{}"\'\s-]|^)(' + re.escape(clean_word) + r')([.,!?;:()[\]{}"\'\s-]|$)'
+
+                    def replacer(match):
+                        # Preserve surrounding punctuation/whitespace
+                        return match.group(1) + synonym + match.group(3)
+
                     expanded = re.sub(
-                        r'\b' + re.escape(word) + r'\b',
-                        synonym,
+                        pattern,
+                        replacer,
                         query,
                         flags=re.IGNORECASE
                     )
 
-                    if expanded not in expansions and len(expansions) < 10:
+                    if expanded != query and expanded not in expansions and len(expansions) < 10:
                         expansions.append(expanded)
 
         logger.debug(f"Expanded '{query}' to {len(expansions)} queries")

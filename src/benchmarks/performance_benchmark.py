@@ -87,15 +87,28 @@ class PerformanceBenchmark:
     Performance benchmarking suite.
     """
 
-    def __init__(self, query_engine):
+    def __init__(self, query_engine, max_results: int = 100):
         """
         Initialize benchmark.
 
+        HIGH PRIORITY FIX: Add max_results limit to prevent memory leak.
+
         Args:
             query_engine: Query engine instance
+            max_results: Maximum number of results to keep (prevents memory leak)
         """
         self.query_engine = query_engine
         self.results: List[BenchmarkResult] = []
+        self.max_results = max_results  # HIGH PRIORITY FIX: Limit result collection
+
+    def clear_results(self):
+        """
+        HIGH PRIORITY FIX: Clear old results to free memory.
+
+        Call this periodically in long-running benchmark sessions.
+        """
+        self.results.clear()
+        logger.info("Cleared benchmark results")
 
     def benchmark_query_latency(
         self,
@@ -181,7 +194,13 @@ class PerformanceBenchmark:
                 completed_at=datetime.now().isoformat()
             )
 
+            # HIGH PRIORITY FIX: Prevent unbounded memory growth
             self.results.append(result)
+            if len(self.results) > self.max_results:
+                # Remove oldest result
+                self.results.pop(0)
+                logger.debug(f"Removed oldest result (limit: {self.max_results})")
+
             logger.info(f"Query latency benchmark complete: {result.avg_latency_ms:.2f}ms avg")
 
             return result
@@ -269,7 +288,13 @@ class PerformanceBenchmark:
                 completed_at=datetime.now().isoformat()
             )
 
+            # HIGH PRIORITY FIX: Prevent unbounded memory growth
             self.results.append(result)
+            if len(self.results) > self.max_results:
+                # Remove oldest result
+                self.results.pop(0)
+                logger.debug(f"Removed oldest result (limit: {self.max_results})")
+
             return result
         else:
             # HIGH PRIORITY FIX: Return meaningful result even when all runs fail
