@@ -14,6 +14,7 @@ from pathlib import Path
 from datetime import datetime
 from dataclasses import dataclass, field, asdict
 import logging
+import threading
 
 logger = logging.getLogger(__name__)
 
@@ -46,6 +47,8 @@ class SavedSearch:
 class SavedSearchManager:
     """
     Manages saved searches and bookmarks.
+
+    MEDIUM PRIORITY FIX: Added thread safety and atomic operations.
     """
 
     def __init__(self, storage_file: Optional[Path] = None):
@@ -57,6 +60,9 @@ class SavedSearchManager:
         """
         self.storage_file = storage_file or Path.home() / '.rag_saved_searches.json'
         self.searches: Dict[str, SavedSearch] = {}
+
+        # MEDIUM PRIORITY FIX: Add thread safety
+        self._searches_lock = threading.RLock()
 
         self._load_searches()
 
@@ -71,6 +77,8 @@ class SavedSearchManager:
     ) -> SavedSearch:
         """
         Save a search query.
+
+        MEDIUM PRIORITY FIX: Thread-safe save operation.
 
         Args:
             name: Search name
@@ -97,8 +105,10 @@ class SavedSearchManager:
             filters=filters or {}
         )
 
-        self.searches[search_id] = search
-        self._save_searches()
+        # MEDIUM PRIORITY FIX: Thread-safe dictionary update
+        with self._searches_lock:
+            self.searches[search_id] = search
+            self._save_searches()
 
         logger.info(f"Saved search: {name}")
         return search
@@ -135,17 +145,21 @@ class SavedSearchManager:
         """
         Delete saved search.
 
+        MEDIUM PRIORITY FIX: Thread-safe delete operation.
+
         Args:
             search_id: Search ID
 
         Returns:
             True if deleted
         """
-        if search_id in self.searches:
-            del self.searches[search_id]
-            self._save_searches()
-            logger.info(f"Deleted search: {search_id}")
-            return True
+        # MEDIUM PRIORITY FIX: Thread-safe dictionary delete
+        with self._searches_lock:
+            if search_id in self.searches:
+                del self.searches[search_id]
+                self._save_searches()
+                logger.info(f"Deleted search: {search_id}")
+                return True
 
         return False
 
@@ -418,17 +432,55 @@ class SavedSearchManager:
             logger.error(f"Error loading saved searches: {e}")
 
     def _save_searches(self):
-        """Save searches to file."""
+        """
+        Save searches to file.
+
+        MEDIUM PRIORITY FIX: Use atomic write to prevent corruption.
+        Note: Must be called within _searches_lock context.
+        """
+        import tempfile
+        import os
+
         try:
+            # Prepare data (must be called within lock, so we have consistent snapshot)
             data = {
                 'version': '1.0',
                 'last_updated': datetime.now().isoformat(),
                 'searches': [s.to_dict() for s in self.searches.values()]
             }
 
-            self.storage_file.write_text(json.dumps(data, indent=2))
+            # MEDIUM PRIORITY FIX: Atomic write using temp file + rename
+            # Ensure parent directory exists
+            self.storage_file.parent.mkdir(parents=True, exist_ok=True)
 
-            logger.debug(f"Saved {len(self.searches)} searches")
+            # Serialize to JSON
+            json_data = json.dumps(data, indent=2)
+
+            # Write to temp file
+            fd, temp_path = tempfile.mkstemp(
+                dir=str(self.storage_file.parent),
+                prefix='.rag_saved_searches.tmp.',
+                suffix='.json'
+            )
+
+            try:
+                with os.fdopen(fd, 'w') as f:
+                    f.write(json_data)
+                    f.flush()
+                    os.fsync(f.fileno())  # Ensure written to disk
+
+                # Atomic rename
+                os.replace(temp_path, str(self.storage_file))
+
+                logger.debug(f"Saved {len(self.searches)} searches")
+
+            except Exception:
+                # Cleanup temp file on error
+                try:
+                    os.unlink(temp_path)
+                except OSError:
+                    pass
+                raise
 
         except Exception as e:
             logger.error(f"Error saving searches: {e}")

@@ -11,6 +11,7 @@ import logging
 from typing import List, Dict, Any, Optional, Set
 from pathlib import Path
 import time
+import threading
 from concurrent.futures import ThreadPoolExecutor, as_completed
 
 logger = logging.getLogger(__name__)
@@ -19,6 +20,8 @@ logger = logging.getLogger(__name__)
 class IndexWarmer:
     """
     Warms up index and caches for better cold-start performance.
+
+    MEDIUM PRIORITY FIX: Added thread safety for concurrent warming operations.
     """
 
     def __init__(
@@ -39,9 +42,15 @@ class IndexWarmer:
         self.query_learning_system = query_learning_system
         self.cache_manager = cache_manager
 
+        # MEDIUM PRIORITY FIX: Add lock for thread-safe concurrent warming
+        self._warming_lock = threading.Lock()
+        self._is_warming = False
+
     def warm_all(self, max_time_seconds: int = 30) -> Dict[str, Any]:
         """
         Execute all warming strategies.
+
+        MEDIUM PRIORITY FIX: Thread-safe warming prevents concurrent operations.
 
         Args:
             max_time_seconds: Maximum time to spend warming
@@ -49,38 +58,51 @@ class IndexWarmer:
         Returns:
             Warming statistics
         """
-        logger.info("Starting index warming...")
-        start_time = time.time()
+        # MEDIUM PRIORITY FIX: Check if already warming
+        with self._warming_lock:
+            if self._is_warming:
+                logger.warning("Index warming already in progress, skipping")
+                return {'already_warming': True}
+            self._is_warming = True
 
-        stats = {
-            'models_loaded': 0,
-            'queries_cached': 0,
-            'files_preloaded': 0,
-            'total_time_seconds': 0
-        }
+        try:
+            logger.info("Starting index warming...")
+            start_time = time.time()
 
-        # 1. Load models
-        if time.time() - start_time < max_time_seconds:
-            model_stats = self.warm_models()
-            stats['models_loaded'] = model_stats.get('models_loaded', 0)
+            stats = {
+                'models_loaded': 0,
+                'queries_cached': 0,
+                'files_preloaded': 0,
+                'total_time_seconds': 0
+            }
 
-        # 2. Pre-cache popular queries
-        if time.time() - start_time < max_time_seconds:
-            query_stats = self.warm_popular_queries(
-                max_queries=10,
-                max_time_seconds=max_time_seconds - (time.time() - start_time)
-            )
-            stats['queries_cached'] = query_stats.get('queries_cached', 0)
+            # 1. Load models
+            if time.time() - start_time < max_time_seconds:
+                model_stats = self.warm_models()
+                stats['models_loaded'] = model_stats.get('models_loaded', 0)
 
-        # 3. Pre-load frequently accessed files
-        if time.time() - start_time < max_time_seconds:
-            file_stats = self.warm_frequent_files(max_files=20)
-            stats['files_preloaded'] = file_stats.get('files_preloaded', 0)
+            # 2. Pre-cache popular queries
+            if time.time() - start_time < max_time_seconds:
+                query_stats = self.warm_popular_queries(
+                    max_queries=10,
+                    max_time_seconds=max_time_seconds - (time.time() - start_time)
+                )
+                stats['queries_cached'] = query_stats.get('queries_cached', 0)
 
-        stats['total_time_seconds'] = time.time() - start_time
+            # 3. Pre-load frequently accessed files
+            if time.time() - start_time < max_time_seconds:
+                file_stats = self.warm_frequent_files(max_files=20)
+                stats['files_preloaded'] = file_stats.get('files_preloaded', 0)
 
-        logger.info(f"Index warming complete: {stats}")
-        return stats
+            stats['total_time_seconds'] = time.time() - start_time
+
+            logger.info(f"Index warming complete: {stats}")
+            return stats
+
+        finally:
+            # MEDIUM PRIORITY FIX: Always clear warming flag
+            with self._warming_lock:
+                self._is_warming = False
 
     def warm_models(self) -> Dict[str, Any]:
         """

@@ -14,6 +14,7 @@ from collections import defaultdict, deque
 from datetime import datetime, timedelta
 import logging
 from threading import Thread, Lock
+import threading
 import time
 
 logger = logging.getLogger(__name__)
@@ -50,6 +51,8 @@ class QueryPattern:
 class QueryPrefetcher:
     """
     Predictively prefetches likely next queries.
+
+    MEDIUM PRIORITY FIX: Enhanced thread safety for all operations.
     """
 
     def __init__(
@@ -79,8 +82,8 @@ class QueryPrefetcher:
         # Recent query history (for detecting sequences)
         self.recent_queries: deque = deque(maxlen=10)
 
-        # Lock for thread safety
-        self.lock = Lock()
+        # MEDIUM PRIORITY FIX: Use RLock for reentrant thread safety
+        self.lock = threading.RLock()
 
         # Prefetch queue
         self.prefetch_queue: List[Tuple[str, float]] = []

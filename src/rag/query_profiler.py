@@ -59,7 +59,12 @@ class ProfiledStage:
 class QueryProfiler:
     """
     Profiles query execution with detailed metrics.
+
+    MEDIUM PRIORITY FIX: Added max depth limit for sub-stages.
     """
+
+    # MEDIUM PRIORITY FIX: Limit sub-stage nesting depth
+    MAX_STAGE_DEPTH = 10
 
     def __init__(self, query: str, correlation_id: Optional[str] = None):
         """
@@ -76,10 +81,14 @@ class QueryProfiler:
         self.stages: List[ProfiledStage] = []
         self.current_stage: Optional[ProfiledStage] = None
         self.metadata: Dict[str, Any] = {}
+        # MEDIUM PRIORITY FIX: Track current depth
+        self._current_depth = 0
 
     def start_stage(self, name: str, metadata: Optional[Dict[str, Any]] = None) -> ProfiledStage:
         """
         Start profiling a stage.
+
+        MEDIUM PRIORITY FIX: Enforce max depth limit for sub-stages.
 
         Args:
             name: Stage name
@@ -88,6 +97,15 @@ class QueryProfiler:
         Returns:
             ProfiledStage instance
         """
+        # MEDIUM PRIORITY FIX: Check depth limit
+        if self._current_depth >= self.MAX_STAGE_DEPTH:
+            logger.warning(
+                f"Maximum profiling depth ({self.MAX_STAGE_DEPTH}) reached, "
+                f"skipping stage '{name}'"
+            )
+            # Return a dummy stage that won't be added
+            return ProfiledStage(name=name, start_time=time.time(), metadata=metadata or {})
+
         stage = ProfiledStage(
             name=name,
             start_time=time.time(),
@@ -100,8 +118,10 @@ class QueryProfiler:
         # Add to current stage or top-level
         if self.current_stage:
             self.current_stage.sub_stages.append(stage)
+            self._current_depth += 1
         else:
             self.stages.append(stage)
+            self._current_depth = 1
 
         # Set as current
         self.current_stage = stage
@@ -109,13 +129,20 @@ class QueryProfiler:
         return stage
 
     def end_stage(self):
-        """End current profiling stage."""
+        """
+        End current profiling stage.
+
+        MEDIUM PRIORITY FIX: Decrement depth when ending stage.
+        """
         if self.current_stage:
             # Get memory after
             self.current_stage.memory_after_mb = self._get_memory_usage_mb()
 
             # Complete stage
             self.current_stage.complete()
+
+            # MEDIUM PRIORITY FIX: Decrement depth
+            self._current_depth = max(0, self._current_depth - 1)
 
             # Pop to parent stage (if exists)
             # For simplicity, we go back to None

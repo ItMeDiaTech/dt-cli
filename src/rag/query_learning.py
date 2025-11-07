@@ -19,6 +19,7 @@ from pathlib import Path
 from datetime import datetime, timedelta
 from collections import Counter, defaultdict
 import logging
+import threading
 
 logger = logging.getLogger(__name__)
 
@@ -87,6 +88,8 @@ class QueryHistoryEntry:
 class QueryLearningSystem:
     """
     Learns from query history to improve results.
+
+    MEDIUM PRIORITY FIX: Added thread safety and atomic operations.
     """
 
     def __init__(self, history_file: Optional[Path] = None):
@@ -98,6 +101,9 @@ class QueryLearningSystem:
         """
         self.history_file = history_file or Path.home() / '.rag_history.json'
         self.history: List[QueryHistoryEntry] = []
+
+        # MEDIUM PRIORITY FIX: Add thread safety
+        self._history_lock = threading.Lock()
 
         self._load_history()
 
@@ -112,6 +118,8 @@ class QueryLearningSystem:
     ):
         """
         Record a query in history.
+
+        MEDIUM PRIORITY FIX: Thread-safe recording with lock.
 
         Args:
             query: Query text
@@ -130,10 +138,13 @@ class QueryLearningSystem:
             correlation_id=correlation_id
         )
 
-        self.history.append(entry)
+        # MEDIUM PRIORITY FIX: Thread-safe append
+        with self._history_lock:
+            self.history.append(entry)
+            should_save = len(self.history) % 10 == 0
 
-        # Auto-save periodically
-        if len(self.history) % 10 == 0:
+        # Auto-save periodically (outside lock to avoid blocking)
+        if should_save:
             self._save_history()
 
         logger.debug(f"Recorded query: {query}")
@@ -145,6 +156,8 @@ class QueryLearningSystem:
     ) -> List[Dict[str, Any]]:
         """
         Find similar past queries.
+
+        MEDIUM PRIORITY FIX: Thread-safe access to history.
 
         Args:
             query: Current query
@@ -158,7 +171,11 @@ class QueryLearningSystem:
 
         similar = []
 
-        for entry in self.history:
+        # MEDIUM PRIORITY FIX: Thread-safe iteration
+        with self._history_lock:
+            history_snapshot = list(self.history)
+
+        for entry in history_snapshot:
             entry_terms = set(entry.query.lower().split())
 
             # Calculate Jaccard similarity
@@ -452,10 +469,18 @@ class QueryLearningSystem:
             logger.error(f"Error loading query history: {e}")
 
     def _save_history(self):
-        """Save history to file."""
+        """
+        Save history to file.
+
+        MEDIUM PRIORITY FIX: Use atomic write to prevent corruption.
+        """
+        import tempfile
+        import os
+
         try:
-            # Keep last 1000 entries
-            entries_to_save = self.history[-1000:]
+            # MEDIUM PRIORITY FIX: Thread-safe copy of entries
+            with self._history_lock:
+                entries_to_save = self.history[-1000:]
 
             data = {
                 'version': '1.0',
@@ -463,9 +488,38 @@ class QueryLearningSystem:
                 'entries': [entry.to_dict() for entry in entries_to_save]
             }
 
-            self.history_file.write_text(json.dumps(data, indent=2))
+            # MEDIUM PRIORITY FIX: Atomic write using temp file + rename
+            # Ensure parent directory exists
+            self.history_file.parent.mkdir(parents=True, exist_ok=True)
 
-            logger.debug(f"Saved {len(entries_to_save)} query history entries")
+            # Serialize to JSON
+            json_data = json.dumps(data, indent=2)
+
+            # Write to temp file
+            fd, temp_path = tempfile.mkstemp(
+                dir=str(self.history_file.parent),
+                prefix='.rag_history.tmp.',
+                suffix='.json'
+            )
+
+            try:
+                with os.fdopen(fd, 'w') as f:
+                    f.write(json_data)
+                    f.flush()
+                    os.fsync(f.fileno())  # Ensure written to disk
+
+                # Atomic rename
+                os.replace(temp_path, str(self.history_file))
+
+                logger.debug(f"Saved {len(entries_to_save)} query history entries")
+
+            except Exception:
+                # Cleanup temp file on error
+                try:
+                    os.unlink(temp_path)
+                except OSError:
+                    pass
+                raise
 
         except Exception as e:
             logger.error(f"Error saving query history: {e}")
