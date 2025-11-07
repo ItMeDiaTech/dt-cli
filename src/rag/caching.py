@@ -6,6 +6,7 @@ from cachetools import TTLCache
 import hashlib
 from typing import Dict, Any, List, Optional
 import logging
+import threading
 
 logger = logging.getLogger(__name__)
 
@@ -27,6 +28,8 @@ class QueryCache:
         self.embedding_cache = TTLCache(maxsize=500, ttl=ttl * 2)
         self.hits = 0
         self.misses = 0
+        # HIGH PRIORITY FIX: Add lock for thread-safe counter updates
+        self._stats_lock = threading.Lock()
 
     def _generate_key(self, query_text: str, n_results: int, file_type: Optional[str]) -> str:
         """
@@ -58,11 +61,15 @@ class QueryCache:
         cache_key = self._generate_key(query_text, n_results, file_type)
 
         if cache_key in self.query_cache:
-            self.hits += 1
+            # HIGH PRIORITY FIX: Thread-safe counter increment
+            with self._stats_lock:
+                self.hits += 1
             logger.debug(f"Cache HIT for query: {query_text[:50]}")
             return self.query_cache[cache_key]
 
-        self.misses += 1
+        # HIGH PRIORITY FIX: Thread-safe counter increment
+        with self._stats_lock:
+            self.misses += 1
         logger.debug(f"Cache MISS for query: {query_text[:50]}")
         return None
 
@@ -108,8 +115,10 @@ class QueryCache:
         """Clear all caches."""
         self.query_cache.clear()
         self.embedding_cache.clear()
-        self.hits = 0
-        self.misses = 0
+        # HIGH PRIORITY FIX: Thread-safe counter reset
+        with self._stats_lock:
+            self.hits = 0
+            self.misses = 0
         logger.info("Cache cleared")
 
     def get_stats(self) -> Dict[str, Any]:
@@ -119,12 +128,17 @@ class QueryCache:
         Returns:
             Dictionary with cache stats
         """
-        total_requests = self.hits + self.misses
-        hit_rate = (self.hits / total_requests * 100) if total_requests > 0 else 0
+        # HIGH PRIORITY FIX: Thread-safe counter read
+        with self._stats_lock:
+            hits = self.hits
+            misses = self.misses
+
+        total_requests = hits + misses
+        hit_rate = (hits / total_requests * 100) if total_requests > 0 else 0
 
         return {
-            'hits': self.hits,
-            'misses': self.misses,
+            'hits': hits,
+            'misses': misses,
             'hit_rate': f"{hit_rate:.1f}%",
             'query_cache_size': len(self.query_cache),
             'embedding_cache_size': len(self.embedding_cache)

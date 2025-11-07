@@ -79,8 +79,20 @@ class DocumentIngestion:
             if any(ignored in path.parts for ignored in self.IGNORE_DIRS):
                 continue
 
+            # HIGH PRIORITY FIX: Skip symlinks to prevent traversal outside root
+            if path.is_symlink():
+                logger.debug(f"Skipping symlink: {path}")
+                continue
+
             # Check extension
             if path.is_file() and path.suffix in extensions:
+                # Additional security: Verify path is still within root
+                try:
+                    path.resolve().relative_to(root.resolve())
+                except ValueError:
+                    logger.warning(f"Skipping file outside root: {path}")
+                    continue
+
                 files.append(path)
 
         logger.info(f"Discovered {len(files)} files")
@@ -97,8 +109,20 @@ class DocumentIngestion:
             File content or None if error
         """
         try:
-            with open(file_path, 'r', encoding='utf-8', errors='ignore') as f:
-                return f.read()
+            # HIGH PRIORITY FIX: Use 'replace' instead of 'ignore'
+            # 'ignore' silently drops invalid characters, corrupting documents
+            # 'replace' replaces them with � so we can detect corruption
+            with open(file_path, 'r', encoding='utf-8', errors='replace') as f:
+                content = f.read()
+
+                # Log if encoding errors were detected
+                if '\ufffd' in content:
+                    logger.warning(
+                        f"Encoding errors detected in {file_path} "
+                        f"(invalid UTF-8 characters replaced with �)"
+                    )
+
+                return content
         except Exception as e:
             logger.warning(f"Error reading {file_path}: {e}")
             return None

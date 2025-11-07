@@ -128,6 +128,15 @@ class ConfigManager:
 
         logger.info(f"Configuration loaded (environment: {self.environment})")
 
+        # HIGH PRIORITY FIX: Validate configuration after loading
+        validation_errors = self.validate()
+        if validation_errors:
+            for error in validation_errors:
+                logger.warning(f"Configuration validation error: {error}")
+            logger.warning("Some configuration validation errors were found")
+        else:
+            logger.debug("Configuration validation passed")
+
     def _merge_config(self, config_path: Path):
         """
         Merge configuration from file.

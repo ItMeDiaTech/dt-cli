@@ -5,6 +5,7 @@ Hybrid search combining semantic and keyword search.
 from typing import List, Dict, Any, Optional
 import logging
 import numpy as np
+import re
 
 logger = logging.getLogger(__name__)
 
@@ -29,6 +30,59 @@ class HybridSearchEngine:
         self.corpus_metadata: List[Dict[str, Any]] = []
         self.corpus_ids: List[str] = []
 
+    def _code_aware_tokenize(self, text: str) -> List[str]:
+        """
+        HIGH PRIORITY FIX: Code-aware tokenization that preserves identifiers.
+
+        Tokenizes text in a way that's suitable for code:
+        - Splits on whitespace and special chars
+        - Preserves original tokens (e.g., 'my_function' stays as one token)
+        - Also splits snake_case: my_function → [my, function, my_function]
+        - Also splits camelCase: getUserId → [get, user, id, getUserId]
+        - Splits on dots: some.method → [some, method, some.method]
+
+        Args:
+            text: Text to tokenize
+
+        Returns:
+            List of tokens
+        """
+        tokens = []
+        text = text.lower()
+
+        # First split on whitespace and common separators
+        words = re.split(r'[\s,;(){}[\]<>]+', text)
+
+        for word in words:
+            if not word:
+                continue
+
+            # Keep the original word
+            tokens.append(word)
+
+            # Split on dots and hyphens but keep parts
+            if '.' in word:
+                parts = word.split('.')
+                tokens.extend([p for p in parts if p])
+
+            if '-' in word:
+                parts = word.split('-')
+                tokens.extend([p for p in parts if p])
+
+            # Split snake_case (word_word)
+            if '_' in word:
+                parts = word.split('_')
+                tokens.extend([p for p in parts if p])
+
+            # Split camelCase (wordWord)
+            # Insert space before uppercase letters, then split
+            camel_split = re.sub(r'([a-z])([A-Z])', r'\1 \2', word)
+            if ' ' in camel_split:
+                parts = camel_split.lower().split()
+                tokens.extend([p for p in parts if p and p not in tokens])
+
+        return tokens
+
     def build_keyword_index(
         self,
         documents: List[str],
@@ -51,8 +105,8 @@ class HybridSearchEngine:
         self.corpus_metadata = metadatas
         self.corpus_ids = ids
 
-        # Tokenize corpus
-        tokenized_corpus = [doc.lower().split() for doc in documents]
+        # HIGH PRIORITY FIX: Use code-aware tokenization
+        tokenized_corpus = [self._code_aware_tokenize(doc) for doc in documents]
 
         # Build BM25 index
         self.bm25_index = BM25Okapi(tokenized_corpus)
@@ -73,7 +127,8 @@ class HybridSearchEngine:
         if not BM25_AVAILABLE or self.bm25_index is None:
             return []
 
-        tokenized_query = query.lower().split()
+        # HIGH PRIORITY FIX: Use code-aware tokenization
+        tokenized_query = self._code_aware_tokenize(query)
         scores = self.bm25_index.get_scores(tokenized_query)
 
         # Get top results

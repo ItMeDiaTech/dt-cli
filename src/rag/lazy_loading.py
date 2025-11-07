@@ -91,30 +91,50 @@ class LazyEmbeddingEngine:
         Returns:
             Numpy array of embeddings
         """
-        self.load_model()
+        # HIGH PRIORITY FIX: Hold lock during entire operation to prevent
+        # model from being unloaded while encoding is in progress
+        with self.model_lock:
+            if self.model is None:
+                logger.info(f"Loading embedding model: {self.model_name}")
+                self.model = SentenceTransformer(self.model_name)
+                logger.info("Model loaded successfully")
+                self._start_cleanup_timer()
 
-        if isinstance(texts, str):
-            texts = [texts]
+            self.last_used = time.time()
 
-        logger.debug(f"Encoding {len(texts)} texts")
+            if isinstance(texts, str):
+                texts = [texts]
 
-        embeddings = self.model.encode(
-            texts,
-            batch_size=batch_size,
-            show_progress_bar=show_progress_bar,
-            convert_to_numpy=True
-        )
+            logger.debug(f"Encoding {len(texts)} texts")
+
+            # Model cannot be unloaded while we hold the lock
+            embeddings = self.model.encode(
+                texts,
+                batch_size=batch_size,
+                show_progress_bar=show_progress_bar,
+                convert_to_numpy=True
+            )
 
         return embeddings
 
     def get_dimension(self) -> int:
         """Get the embedding dimension."""
-        self.load_model()
-        return self.model.get_sentence_embedding_dimension()
+        # HIGH PRIORITY FIX: Hold lock to prevent race condition
+        with self.model_lock:
+            if self.model is None:
+                logger.info(f"Loading embedding model: {self.model_name}")
+                self.model = SentenceTransformer(self.model_name)
+                logger.info("Model loaded successfully")
+                self._start_cleanup_timer()
+
+            self.last_used = time.time()
+            return self.model.get_sentence_embedding_dimension()
 
     def is_loaded(self) -> bool:
         """Check if model is currently loaded."""
-        return self.model is not None
+        # HIGH PRIORITY FIX: Thread-safe read
+        with self.model_lock:
+            return self.model is not None
 
     def unload(self):
         """Manually unload the model."""
