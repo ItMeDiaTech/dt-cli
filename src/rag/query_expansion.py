@@ -144,6 +144,8 @@ class QueryExpander:
         """
         Expand query with common technical patterns.
 
+        MEDIUM PRIORITY FIX: Add more expansion techniques.
+
         Args:
             query: Original query
 
@@ -152,19 +154,60 @@ class QueryExpander:
         """
         expansions = [query]
 
-        # Check for common patterns
-        if 'how to' in query.lower():
-            # Add implementation-focused variation
-            expanded = query.replace('how to', 'implementation of')
-            expansions.append(expanded)
+        # MEDIUM PRIORITY FIX: Expanded pattern matching
+        query_lower = query.lower()
 
-        if 'what is' in query.lower():
-            # Add definition-focused variation
-            expanded = query.replace('what is', 'definition of')
-            expansions.append(expanded)
+        # Pattern 1: "how to" variations
+        if 'how to' in query_lower:
+            expansions.append(query.replace('how to', 'implementation of'))
+            expansions.append(query.replace('how to', 'example of'))
 
+        # Pattern 2: "what is" variations
+        if 'what is' in query_lower:
+            expansions.append(query.replace('what is', 'definition of'))
+            expansions.append(query.replace('what is', 'explanation of'))
+
+        # Pattern 3: "where is" variations
+        if 'where is' in query_lower:
+            expansions.append(query.replace('where is', 'location of'))
+            expansions.append(query.replace('where is', 'find'))
+
+        # Pattern 4: "why does" variations
+        if 'why does' in query_lower:
+            expansions.append(query.replace('why does', 'reason for'))
+            expansions.append(query.replace('why does', 'explanation why'))
+
+        # Pattern 5: Remove question marks
         if '?' in query:
-            # Remove question mark for code search
             expansions.append(query.replace('?', ''))
 
-        return list(set(expansions))
+        # MEDIUM PRIORITY FIX: Add code-specific expansions
+        # Pattern 6: Add "code" suffix for implementation queries
+        if any(word in query_lower for word in ['implement', 'create', 'build', 'develop']):
+            if 'code' not in query_lower:
+                expansions.append(f"{query} code")
+                expansions.append(f"{query} implementation")
+
+        # Pattern 7: Add "example" for tutorial queries
+        if any(word in query_lower for word in ['how', 'usage', 'use']):
+            if 'example' not in query_lower:
+                expansions.append(f"{query} example")
+
+        # Pattern 8: Add "test" for testing queries
+        if any(word in query_lower for word in ['test', 'testing', 'unittest']):
+            if 'test' in query_lower and 'test case' not in query_lower:
+                expansions.append(query.replace('test', 'test case'))
+
+        # Pattern 9: Add language-agnostic variations
+        # Remove specific language names to find general concepts
+        language_patterns = {
+            'python': 'programming',
+            'javascript': 'programming',
+            'java': 'programming',
+            'typescript': 'programming',
+        }
+        for lang, generic in language_patterns.items():
+            if lang in query_lower:
+                expansions.append(query.replace(lang, generic))
+
+        return list(set(expansions))[:10]  # Limit to top 10 expansions

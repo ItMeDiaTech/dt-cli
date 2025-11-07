@@ -12,7 +12,19 @@ logger = logging.getLogger(__name__)
 
 
 class ProgressTracker:
-    """Track and persist indexing progress."""
+    """
+    Track and persist indexing progress.
+
+    MEDIUM PRIORITY FIX: Add status structure validation.
+    """
+
+    # MEDIUM PRIORITY FIX: Define valid status values
+    VALID_STATUSES = {'not_started', 'indexing', 'complete', 'failed'}
+    REQUIRED_FIELDS = {
+        'indexing': ['current', 'total', 'percentage'],
+        'complete': ['total_files', 'total_chunks', 'completed_at'],
+        'failed': ['error', 'failed_at']
+    }
 
     def __init__(self, status_file: str = ".rag_data/status.json"):
         """
@@ -24,18 +36,84 @@ class ProgressTracker:
         self.status_file = Path(status_file)
         self.status_file.parent.mkdir(exist_ok=True, parents=True)
 
+    def _validate_status(self, status: Dict[str, Any]) -> bool:
+        """
+        MEDIUM PRIORITY FIX: Validate status structure.
+
+        Args:
+            status: Status dictionary to validate
+
+        Returns:
+            True if valid
+
+        Raises:
+            ValueError: If status structure is invalid
+        """
+        # Check status field exists
+        if 'status' not in status:
+            raise ValueError("Status dictionary must contain 'status' field")
+
+        status_value = status['status']
+
+        # Check status value is valid
+        if status_value not in self.VALID_STATUSES:
+            raise ValueError(
+                f"Invalid status value: '{status_value}'. "
+                f"Must be one of: {', '.join(self.VALID_STATUSES)}"
+            )
+
+        # Check required fields for this status
+        if status_value in self.REQUIRED_FIELDS:
+            required = self.REQUIRED_FIELDS[status_value]
+            missing = [field for field in required if field not in status]
+
+            if missing:
+                raise ValueError(
+                    f"Status '{status_value}' missing required fields: {', '.join(missing)}"
+                )
+
+        # Type validation for specific fields
+        if 'current' in status and not isinstance(status['current'], int):
+            raise ValueError(f"Field 'current' must be an integer, got {type(status['current'])}")
+
+        if 'total' in status and not isinstance(status['total'], int):
+            raise ValueError(f"Field 'total' must be an integer, got {type(status['total'])}")
+
+        if 'percentage' in status:
+            percentage = status['percentage']
+            if not isinstance(percentage, (int, float)) or percentage < 0 or percentage > 100:
+                raise ValueError(f"Field 'percentage' must be 0-100, got {percentage}")
+
+        if 'errors' in status and not isinstance(status['errors'], int):
+            raise ValueError(f"Field 'errors' must be an integer, got {type(status['errors'])}")
+
+        return True
+
     def save_status(self, status: Dict[str, Any]):
         """
         Save current status to file.
 
+        MEDIUM PRIORITY FIX: Add status validation.
+
         Args:
             status: Status dictionary
+
+        Raises:
+            ValueError: If status structure is invalid
         """
         try:
+            # MEDIUM PRIORITY FIX: Validate before saving
+            self._validate_status(status)
+
             status['last_updated'] = datetime.now().isoformat()
+
             # CRITICAL FIX: Use atomic write to prevent corruption on crash
             from src.utils.atomic_write import atomic_write_json
             atomic_write_json(self.status_file, status, indent=2)
+
+        except ValueError as e:
+            logger.error(f"Invalid status structure: {e}")
+            raise
         except IOError as e:
             logger.error(f"Error saving status: {e}")
 
@@ -43,14 +121,27 @@ class ProgressTracker:
         """
         Load status from file.
 
+        MEDIUM PRIORITY FIX: Validate loaded status structure.
+
         Returns:
-            Status dictionary or None if not found
+            Status dictionary or None if not found or invalid
         """
         if self.status_file.exists():
             try:
-                return json.loads(self.status_file.read_text())
+                status = json.loads(self.status_file.read_text())
+
+                # MEDIUM PRIORITY FIX: Validate loaded status
+                try:
+                    self._validate_status(status)
+                    return status
+                except ValueError as e:
+                    logger.error(f"Loaded status has invalid structure: {e}")
+                    logger.warning("Returning None for invalid status")
+                    return None
+
             except (json.JSONDecodeError, IOError) as e:
                 logger.error(f"Error loading status: {e}")
+
         return None
 
     def update_progress(

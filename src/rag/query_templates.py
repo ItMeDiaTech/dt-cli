@@ -9,9 +9,12 @@ Provides pre-built query templates for frequent use cases:
 """
 
 from typing import Dict, List, Any, Optional
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, asdict
 import re
 import logging
+import threading
+import json
+from pathlib import Path
 
 logger = logging.getLogger(__name__)
 
@@ -28,6 +31,15 @@ class QueryTemplate:
     examples: List[str] = field(default_factory=list)
     tags: List[str] = field(default_factory=list)
     n_results: int = 5
+
+    def to_dict(self) -> Dict[str, Any]:
+        """Convert to dictionary for serialization."""
+        return asdict(self)
+
+    @classmethod
+    def from_dict(cls, data: Dict[str, Any]) -> 'QueryTemplate':
+        """Create from dictionary."""
+        return cls(**data)
 
     def format(self, **kwargs) -> str:
         """
@@ -227,21 +239,111 @@ BUILTIN_TEMPLATES = [
 class QueryTemplateManager:
     """
     Manages query templates.
+
+    MEDIUM PRIORITY FIX: Add thread safety and persistence.
     """
 
-    def __init__(self):
-        """Initialize template manager."""
+    def __init__(self, persist_path: Optional[str] = None):
+        """
+        Initialize template manager.
+
+        MEDIUM PRIORITY FIX: Add persistence support.
+
+        Args:
+            persist_path: Path to persist custom templates
+        """
         self.templates: Dict[str, QueryTemplate] = {}
+
+        # MEDIUM PRIORITY FIX: Add thread safety
+        self._lock = threading.RLock()
+
+        # MEDIUM PRIORITY FIX: Add persistence
+        self.persist_path = Path(persist_path) if persist_path else Path('.rag_data/custom_templates.json')
 
         # Load builtin templates
         for template in BUILTIN_TEMPLATES:
             self.templates[template.id] = template
 
+        # Load custom templates from disk
+        self._load_custom_templates()
+
         logger.info(f"Loaded {len(self.templates)} query templates")
+
+    def _load_custom_templates(self):
+        """
+        MEDIUM PRIORITY FIX: Load custom templates from disk.
+        """
+        if not self.persist_path.exists():
+            return
+
+        try:
+            with self._lock:
+                data = json.loads(self.persist_path.read_text())
+                for template_data in data.get('templates', []):
+                    try:
+                        template = QueryTemplate.from_dict(template_data)
+                        # Only load if not a builtin template
+                        is_builtin = any(t.id == template.id for t in BUILTIN_TEMPLATES)
+                        if not is_builtin:
+                            self.templates[template.id] = template
+                            logger.debug(f"Loaded custom template: {template.id}")
+                    except Exception as e:
+                        logger.error(f"Error loading template: {e}")
+
+                logger.info(f"Loaded {len(data.get('templates', []))} custom templates from disk")
+
+        except Exception as e:
+            logger.error(f"Error loading custom templates: {e}")
+
+    def _save_custom_templates(self):
+        """
+        MEDIUM PRIORITY FIX: Save custom templates to disk.
+        """
+        try:
+            # Ensure directory exists
+            self.persist_path.parent.mkdir(parents=True, exist_ok=True)
+
+            # Get only custom templates (not builtins)
+            builtin_ids = {t.id for t in BUILTIN_TEMPLATES}
+            custom_templates = [
+                t.to_dict() for t_id, t in self.templates.items()
+                if t_id not in builtin_ids
+            ]
+
+            # Write atomically
+            import tempfile
+            import os
+
+            fd, temp_path = tempfile.mkstemp(
+                dir=str(self.persist_path.parent),
+                prefix='.templates.tmp.',
+                suffix='.json'
+            )
+
+            try:
+                with os.fdopen(fd, 'w') as f:
+                    json.dump({'templates': custom_templates}, f, indent=2)
+                    f.flush()
+                    os.fsync(f.fileno())
+
+                os.replace(temp_path, str(self.persist_path))
+                logger.debug(f"Saved {len(custom_templates)} custom templates to disk")
+
+            except Exception:
+                try:
+                    os.unlink(temp_path)
+                except OSError:
+                    pass
+                raise
+
+        except Exception as e:
+            logger.error(f"Error saving custom templates: {e}")
 
     def get_template(self, template_id: str) -> Optional[QueryTemplate]:
         """
         Get template by ID.
+
+        MEDIUM PRIORITY FIX: Add thread safety.
 
         Args:
             template_id: Template ID
@@ -249,7 +351,8 @@ class QueryTemplateManager:
         Returns:
             QueryTemplate or None
         """
-        return self.templates.get(template_id)
+        with self._lock:
+            return self.templates.get(template_id)
 
     def list_templates(
         self,
@@ -258,22 +361,25 @@ class QueryTemplateManager:
         """
         List available templates.
 
+        MEDIUM PRIORITY FIX: Add thread safety.
+
         Args:
             tags: Filter by tags
 
         Returns:
             List of templates
         """
-        templates = list(self.templates.values())
+        with self._lock:
+            templates = list(self.templates.values())
 
-        if tags:
-            tag_set = set(tags)
-            templates = [
-                t for t in templates
-                if tag_set & set(t.tags)
-            ]
+            if tags:
+                tag_set = set(tags)
+                templates = [
+                    t for t in templates
+                    if tag_set & set(t.tags)
+                ]
 
-        return templates
+            return templates
 
     def format_template(
         self,
@@ -347,24 +453,32 @@ class QueryTemplateManager:
         """
         Add custom template.
 
+        MEDIUM PRIORITY FIX: Add persistence.
+
         Args:
             template: QueryTemplate instance
 
         Returns:
             True if added
         """
-        if template.id in self.templates:
-            logger.warning(f"Template {template.id} already exists")
-            return False
+        with self._lock:
+            if template.id in self.templates:
+                logger.warning(f"Template {template.id} already exists")
+                return False
 
-        self.templates[template.id] = template
-        logger.info(f"Added template: {template.id}")
+            self.templates[template.id] = template
+            logger.info(f"Added template: {template.id}")
 
-        return True
+            # MEDIUM PRIORITY FIX: Persist to disk
+            self._save_custom_templates()
+
+            return True
 
     def remove_template(self, template_id: str) -> bool:
         """
         Remove template.
+
+        MEDIUM PRIORITY FIX: Add persistence and prevent removing builtins.
 
         Args:
             template_id: Template ID
@@ -372,12 +486,23 @@ class QueryTemplateManager:
         Returns:
             True if removed
         """
-        if template_id in self.templates:
-            del self.templates[template_id]
-            logger.info(f"Removed template: {template_id}")
-            return True
+        with self._lock:
+            # MEDIUM PRIORITY FIX: Prevent removing builtin templates
+            builtin_ids = {t.id for t in BUILTIN_TEMPLATES}
+            if template_id in builtin_ids:
+                logger.error(f"Cannot remove builtin template: {template_id}")
+                return False
 
-        return False
+            if template_id in self.templates:
+                del self.templates[template_id]
+                logger.info(f"Removed template: {template_id}")
+
+                # MEDIUM PRIORITY FIX: Persist to disk
+                self._save_custom_templates()
+
+                return True
+
+            return False
 
     def search_templates(self, query: str) -> List[QueryTemplate]:
         """

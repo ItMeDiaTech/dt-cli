@@ -243,13 +243,26 @@ class HybridSearchEngine:
 
     def _normalize_scores(self, scores: List[float]) -> List[float]:
         """
-        Normalize scores to 0-1 range.
+        Normalize scores to 0-1 range using min-max normalization.
+
+        MEDIUM PRIORITY FIX: Improved documentation and semantics.
+
+        This method uses min-max normalization: (x - min) / (max - min)
+        - Transforms all scores to the range [0, 1]
+        - Preserves the relative ordering of scores
+        - The highest score becomes 1.0, the lowest becomes 0.0
+        - All intermediate scores are linearly scaled between 0 and 1
+
+        Special cases:
+        - Empty scores: Returns empty list
+        - All scores equal: Returns all 1.0 (perfect scores)
+        - This ensures fair comparison between different search methods
 
         Args:
-            scores: List of scores
+            scores: List of raw scores (any range)
 
         Returns:
-            Normalized scores
+            Normalized scores in [0, 1] range
         """
         if not scores:
             return []
@@ -258,10 +271,23 @@ class HybridSearchEngine:
         min_score = scores_array.min()
         max_score = scores_array.max()
 
+        # MEDIUM PRIORITY FIX: Handle edge case with better semantics
+        # If all scores are equal, they're all equally good, so return 1.0
         if max_score == min_score:
+            logger.debug(
+                f"All {len(scores)} scores are equal ({min_score}), "
+                f"treating as perfect scores (1.0)"
+            )
             return [1.0] * len(scores)
 
+        # Apply min-max normalization
         normalized = (scores_array - min_score) / (max_score - min_score)
+
+        logger.debug(
+            f"Normalized scores: min={min_score:.4f}, max={max_score:.4f}, "
+            f"range after=[0.0, 1.0]"
+        )
+
         return normalized.tolist()
 
     def is_available(self) -> bool:
