@@ -264,10 +264,12 @@ class RealtimeIndexWatcher:
         logger.info(f"Re-indexing {len(changed_files)} changed files...")
 
         try:
-            # Trigger incremental indexing
+            # CRITICAL FIX: Pass changed_files for true incremental indexing
+            # Convert set to list for compatibility
             result = self.query_engine.index_codebase(
                 incremental=True,
-                use_git=False  # We already have the file list
+                use_git=False,  # We already have the file list
+                changed_files=list(changed_files)  # Pass the actual changed files
             )
 
             self.stats['total_indexing_runs'] += 1

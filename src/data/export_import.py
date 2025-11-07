@@ -136,15 +136,33 @@ class DataExporter:
             logger.warning(f"Failed to export knowledge graph: {e}")
 
     def _export_configuration(self, export_dir: Path):
-        """Export configuration."""
+        """Export configuration, excluding sensitive credentials."""
         try:
             config_dir = Path.home() / '.rag_config'
 
             if config_dir.exists():
-                # Copy all config files
                 config_export_dir = export_dir / 'config'
-                shutil.copytree(config_dir, config_export_dir)
-                logger.info("Exported configuration")
+                config_export_dir.mkdir(parents=True, exist_ok=True)
+
+                # CRITICAL FIX: Copy config files selectively, EXCLUDING credentials
+                for item in config_dir.iterdir():
+                    # Skip credentials file for security
+                    if item.name == '.credentials.json':
+                        logger.warning("Skipping credentials file in export (security)")
+                        continue
+
+                    # Skip other sensitive files
+                    if item.name.endswith(('.key', '.secret', '.pem')):
+                        logger.warning(f"Skipping sensitive file: {item.name}")
+                        continue
+
+                    # Copy non-sensitive files
+                    if item.is_file():
+                        shutil.copy2(item, config_export_dir / item.name)
+                    elif item.is_dir():
+                        shutil.copytree(item, config_export_dir / item.name)
+
+                logger.info("Exported configuration (credentials excluded)")
 
         except Exception as e:
             logger.warning(f"Failed to export configuration: {e}")
@@ -216,8 +234,23 @@ class DataImporter:
         temp_dir.mkdir(parents=True, exist_ok=True)
 
         try:
-            # Extract archive
+            # CRITICAL FIX: Extract archive with path traversal protection
             with tarfile.open(archive_path, 'r:gz') as tar:
+                # Validate all paths before extraction
+                for member in tar.getmembers():
+                    # Resolve member path
+                    member_path = (temp_dir / member.name).resolve()
+
+                    # SECURITY: Ensure path is within temp directory
+                    if not str(member_path).startswith(str(temp_dir.resolve())):
+                        raise ValueError(f"Path traversal attempt detected: {member.name}")
+
+                    # SECURITY: Skip symlinks to prevent symlink attacks
+                    if member.issym() or member.islnk():
+                        logger.warning(f"Skipping symlink in archive: {member.name}")
+                        continue
+
+                # Safe to extract after validation
                 tar.extractall(temp_dir)
 
             extract_dir = temp_dir / 'rag_export'

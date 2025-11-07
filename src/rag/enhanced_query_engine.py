@@ -245,11 +245,29 @@ class EnhancedQueryEngine:
         else:
             expanded_queries = [query_text]
 
-        # Perform search
-        if use_hybrid and self.hybrid_search.is_available():
-            results = self._hybrid_query(expanded_queries[0], n_results, file_type)
-        else:
-            results = self._semantic_query(expanded_queries[0], n_results, file_type)
+        # CRITICAL FIX: Perform search with ALL expanded queries, not just first one
+        all_results = []
+        seen_ids = set()
+
+        for query in expanded_queries:
+            # Perform search for this query variation
+            if use_hybrid and self.hybrid_search.is_available():
+                query_results = self._hybrid_query(query, n_results, file_type)
+            else:
+                query_results = self._semantic_query(query, n_results, file_type)
+
+            # Merge results, deduplicating by ID
+            for result in query_results:
+                result_id = result.get('id') or result.get('text', '')[:100]
+                if result_id not in seen_ids:
+                    seen_ids.add(result_id)
+                    all_results.append(result)
+
+        # Sort merged results by score (descending)
+        all_results.sort(key=lambda x: x.get('score', 0), reverse=True)
+
+        # Take top n_results
+        results = all_results[:n_results]
 
         # Rerank if requested
         if use_reranking and self.reranker and self.reranker.is_available():
