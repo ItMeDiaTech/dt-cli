@@ -118,7 +118,7 @@ class PluginMetadata:
     author: str
     description: str
     plugin_type: str
-    enabled: bool = True
+    enabled: bool = False  # HIGH PRIORITY FIX: Default disabled for security
 
 
 class PluginManager:
