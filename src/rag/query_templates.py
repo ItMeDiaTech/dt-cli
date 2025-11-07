@@ -504,11 +504,49 @@ class QueryTemplateManager:
                         # Remove common trailing words that aren't part of the concept
                         concept = re.sub(r'\s+(?:work|function|operate|in|for|the|a|an)$', '', concept, flags=re.IGNORECASE)
 
-                        if concept:
+                        # HIGH PRIORITY FIX: Validate extracted variable
+                        if concept and self._validate_variable(concept, var):
                             variables[var] = concept
                             break  # Use first successful match
 
         return variables if variables else None
+
+    def _validate_variable(self, value: str, var_name: str) -> bool:
+        """
+        HIGH PRIORITY FIX: Validate extracted variable.
+
+        Args:
+            value: Variable value to validate
+            var_name: Variable name
+
+        Returns:
+            True if valid
+        """
+        if not value or not isinstance(value, str):
+            return False
+
+        # Remove extra whitespace
+        value = value.strip()
+
+        # Minimum length check (at least 2 characters)
+        if len(value) < 2:
+            return False
+
+        # Maximum length check (reasonable concept name)
+        if len(value) > 100:
+            logger.warning(f"Variable '{var_name}' too long: {len(value)} chars")
+            return False
+
+        # Check for only valid characters (alphanumeric, spaces, underscores, hyphens)
+        if not re.match(r'^[\w\s\-]+$', value):
+            logger.warning(f"Variable '{var_name}' contains invalid characters: {value}")
+            return False
+
+        # Check it's not just whitespace or special characters
+        if not re.search(r'[a-zA-Z0-9]', value):
+            return False
+
+        return True
 
 
 # Global instance

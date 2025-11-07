@@ -12,6 +12,7 @@ Automates:
 
 import subprocess
 import sys
+import re
 from pathlib import Path
 from typing import Dict, Any, List, Optional
 import logging
@@ -343,13 +344,29 @@ class DeploymentHelper:
         """
         Generate startup script.
 
+        HIGH PRIORITY FIX: Validate Python path and script content.
+
         Args:
             output_path: Output script path
         """
-        script_content = """#!/bin/bash
+        # HIGH PRIORITY FIX: Validate Python executable
+        python_exe = sys.executable
+        if not Path(python_exe).exists():
+            raise ValueError(f"Python executable not found: {python_exe}")
+
+        script_content = f"""#!/bin/bash
 # RAG-MAF Plugin Startup Script
 
 echo "Starting RAG-MAF Plugin..."
+
+# HIGH PRIORITY FIX: Use validated Python executable
+PYTHON_EXE="{python_exe}"
+
+# Validate Python executable exists
+if [ ! -f "$PYTHON_EXE" ]; then
+    echo "Error: Python executable not found: $PYTHON_EXE"
+    exit 1
+fi
 
 # Activate virtual environment (if exists)
 if [ -d "venv" ]; then
@@ -358,7 +375,7 @@ fi
 
 # Start MCP server
 echo "Starting MCP server..."
-python -m src.mcp.enhanced_server &
+"$PYTHON_EXE" -m src.mcp.enhanced_server &
 MCP_PID=$!
 
 echo "MCP server started (PID: $MCP_PID)"
@@ -372,8 +389,26 @@ trap "kill $MCP_PID; exit" INT
 wait $MCP_PID
 """
 
+        # HIGH PRIORITY FIX: Validate script content before writing
+        if not script_content or len(script_content) < 100:
+            raise ValueError("Generated script content is suspiciously short")
+
+        # Check for required elements
+        required_elements = ['#!/bin/bash', 'src.mcp.enhanced_server', 'MCP_PID']
+        for element in required_elements:
+            if element not in script_content:
+                raise ValueError(f"Generated script missing required element: {element}")
+
         output_path.write_text(script_content)
         output_path.chmod(0o755)
+
+        # HIGH PRIORITY FIX: Verify script was written correctly
+        if not output_path.exists():
+            raise IOError(f"Failed to create script file: {output_path}")
+
+        # Verify file is executable
+        if not output_path.stat().st_mode & 0o100:
+            raise IOError(f"Script is not executable: {output_path}")
 
         print(f"✅ Startup script generated: {output_path}")
 
@@ -386,11 +421,32 @@ wait $MCP_PID
         """
         Generate systemd service file.
 
+        HIGH PRIORITY FIX: Validate Python path and service content.
+
         Args:
             output_path: Output service file path
             project_path: Project path
             user: System user
         """
+        # HIGH PRIORITY FIX: Validate Python executable exists
+        python_exe = sys.executable
+        if not Path(python_exe).exists():
+            raise ValueError(f"Python executable not found: {python_exe}")
+
+        # HIGH PRIORITY FIX: Validate project path
+        if not project_path.exists():
+            raise ValueError(f"Project path does not exist: {project_path}")
+
+        if not project_path.is_dir():
+            raise ValueError(f"Project path must be a directory: {project_path}")
+
+        # HIGH PRIORITY FIX: Validate user (basic check)
+        if not user or not isinstance(user, str):
+            raise ValueError("User must be a non-empty string")
+
+        if len(user) > 32 or not re.match(r'^[a-z_][a-z0-9_-]*[$]?$', user):
+            raise ValueError(f"Invalid system user name: {user}")
+
         service_content = f"""[Unit]
 Description=RAG-MAF Plugin MCP Server
 After=network.target
@@ -399,7 +455,7 @@ After=network.target
 Type=simple
 User={user}
 WorkingDirectory={project_path}
-ExecStart={sys.executable} -m src.mcp.enhanced_server
+ExecStart={python_exe} -m src.mcp.enhanced_server
 Restart=on-failure
 RestartSec=5s
 
@@ -407,7 +463,26 @@ RestartSec=5s
 WantedBy=multi-user.target
 """
 
+        # HIGH PRIORITY FIX: Validate service content
+        if not service_content or len(service_content) < 100:
+            raise ValueError("Generated service content is suspiciously short")
+
+        # Check for required elements
+        required_elements = ['[Unit]', '[Service]', '[Install]', 'ExecStart=', python_exe]
+        for element in required_elements:
+            if element not in service_content:
+                raise ValueError(f"Generated service missing required element: {element}")
+
         output_path.write_text(service_content)
+
+        # HIGH PRIORITY FIX: Verify service was written correctly
+        if not output_path.exists():
+            raise IOError(f"Failed to create service file: {output_path}")
+
+        # Verify file size is reasonable
+        file_size = output_path.stat().st_size
+        if file_size < 100 or file_size > 10000:
+            raise IOError(f"Generated service file has unexpected size: {file_size} bytes")
 
         print(f"✅ Systemd service generated: {output_path}")
         print(f"\n   To install:")

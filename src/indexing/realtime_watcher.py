@@ -248,15 +248,34 @@ class RealtimeIndexWatcher:
         logger.info("Realtime watcher started")
 
     def stop(self):
-        """Stop watching filesystem."""
+        """
+        Stop watching filesystem.
+
+        HIGH PRIORITY FIX: Proper cleanup to prevent resource leaks.
+        """
         if not self.observer:
             return
 
         logger.info("Stopping realtime watcher...")
 
+        # HIGH PRIORITY FIX: Clean up handler resources
+        if self.handler:
+            # Stop debounce thread if running
+            if self.handler.running_event.is_set():
+                self.handler.running_event.clear()
+                # Wait for debounce thread to finish
+                if self.handler.debounce_thread and self.handler.debounce_thread.is_alive():
+                    self.handler.debounce_thread.join(timeout=3.0)
+
+            # Clear pending changes
+            with self.handler.lock:
+                self.handler.pending_changes.clear()
+
+        # Stop observer
         self.observer.stop()
         self.observer.join(timeout=5)
         self.observer = None
+        self.handler = None
 
         logger.info("Realtime watcher stopped")
 
