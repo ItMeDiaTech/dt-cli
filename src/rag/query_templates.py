@@ -455,6 +455,9 @@ class QueryTemplateManager:
         """
         Extract variables from a query using template pattern.
 
+        HIGH PRIORITY FIX: Support multi-word variable extraction.
+        Original only matched single words, now handles multi-word concepts.
+
         Args:
             template_id: Template ID
             query: User query
@@ -467,18 +470,43 @@ class QueryTemplateManager:
         if not template:
             return None
 
-        # Simple extraction (can be improved with NLP)
+        # HIGH PRIORITY FIX: Improved extraction with multi-word support
         variables = {}
 
         # For now, just extract the main concept
-        # This is a simplified version
+        # This is a simplified version (can be improved with NLP)
         for var in template.variables:
             # Try to extract based on common patterns
             if var == 'feature' or var == 'component' or var == 'name':
-                # Extract from "how does X work" pattern
-                match = re.search(r'(?:how does|find|for|in|of)\s+(\w+(?:\s+\w+)?)', query, re.IGNORECASE)
-                if match:
-                    variables[var] = match.group(1)
+                # HIGH PRIORITY FIX: Extended pattern to capture multi-word concepts
+                # Original: r'(?:how does|find|for|in|of)\s+(\w+(?:\s+\w+)?)'
+                # New: Captures up to 4 words to handle complex names like "user authentication system"
+                patterns = [
+                    # Pattern 1: "how does <concept> work"
+                    r'(?:how does|how do)\s+([\w\s]+?)\s+(?:work|function|operate)',
+                    # Pattern 2: "find <concept>"
+                    r'(?:find|search for|locate)\s+([\w\s]+?)(?:\s+in|\s+for|\?|$)',
+                    # Pattern 3: "for <concept>"
+                    r'for\s+([\w\s]+?)(?:\s+in|\?|$)',
+                    # Pattern 4: "in <concept>"
+                    r'in\s+([\w\s]+?)(?:\?|$)',
+                    # Pattern 5: "of <concept>"
+                    r'of\s+([\w\s]+?)(?:\?|$)',
+                    # Pattern 6: General catch-all (captures 1-4 words)
+                    r'(?:how does|find|for|in|of)\s+([\w]+(?:\s+[\w]+){0,3})'
+                ]
+
+                for pattern in patterns:
+                    match = re.search(pattern, query, re.IGNORECASE)
+                    if match:
+                        # Clean up extracted text (remove extra spaces, trailing words)
+                        concept = match.group(1).strip()
+                        # Remove common trailing words that aren't part of the concept
+                        concept = re.sub(r'\s+(?:work|function|operate|in|for|the|a|an)$', '', concept, flags=re.IGNORECASE)
+
+                        if concept:
+                            variables[var] = concept
+                            break  # Use first successful match
 
         return variables if variables else None
 

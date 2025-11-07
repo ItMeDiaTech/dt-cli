@@ -10,7 +10,7 @@ from pathlib import Path
 from typing import Set, Optional, Callable, Dict, Any
 from datetime import datetime, timedelta
 import logging
-from threading import Thread, Lock
+from threading import Thread, Lock, Event
 from collections import defaultdict
 
 logger = logging.getLogger(__name__)
@@ -59,9 +59,11 @@ class CodeChangeHandler(FileSystemEventHandler):
         self.pending_changes: Dict[str, float] = {}
         self.lock = Lock()
 
-        # Debounce thread
+        # HIGH PRIORITY FIX: Use threading.Event for proper synchronization
+        # Prevents race condition where multiple threads could start
+        # debounce worker simultaneously
         self.debounce_thread: Optional[Thread] = None
-        self.running = False
+        self.running_event = Event()  # Thread-safe flag
 
     def should_process_file(self, file_path: str) -> bool:
         """
@@ -132,9 +134,10 @@ class CodeChangeHandler(FileSystemEventHandler):
         with self.lock:
             self.pending_changes[file_path] = time.time()
 
+            # HIGH PRIORITY FIX: Use Event.is_set() for thread-safe check
             # Start debounce thread if not running
-            if not self.running:
-                self.running = True
+            if not self.running_event.is_set():
+                self.running_event.set()  # Atomically mark as running
                 self.debounce_thread = Thread(
                     target=self._debounce_worker,
                     daemon=True
@@ -144,13 +147,18 @@ class CodeChangeHandler(FileSystemEventHandler):
         logger.debug(f"Detected change: {file_path}")
 
     def _debounce_worker(self):
-        """Worker thread for debouncing changes."""
-        while self.running:
+        """
+        Worker thread for debouncing changes.
+
+        HIGH PRIORITY FIX: Use Event instead of boolean flag to prevent
+        race condition where multiple threads could be started.
+        """
+        while self.running_event.is_set():
             time.sleep(0.5)
 
             with self.lock:
                 if not self.pending_changes:
-                    self.running = False
+                    self.running_event.clear()  # Atomically mark as stopped
                     break
 
                 current_time = time.time()
