@@ -92,6 +92,10 @@ class QueryPrefetcher:
         self.running = False
         self.prefetch_thread: Optional[Thread] = None
 
+        # MEDIUM PRIORITY FIX: Add query timeout and run limit
+        self.query_timeout_seconds = 30
+        self.max_prefetches_per_run = 100
+
     def record_query(self, query: str):
         """
         Record a query and learn patterns.
@@ -222,11 +226,26 @@ class QueryPrefetcher:
         logger.info("Query prefetching started")
 
     def stop_prefetching(self):
-        """Stop background prefetching."""
+        """
+        Stop background prefetching.
+
+        MEDIUM PRIORITY FIX: Graceful shutdown with proper timeout.
+        """
         self.running = False
 
+        # MEDIUM PRIORITY FIX: Clear queue to help worker exit faster
+        with self.lock:
+            self.prefetch_queue.clear()
+
         if self.prefetch_thread:
-            self.prefetch_thread.join(timeout=5)
+            # MEDIUM PRIORITY FIX: Graceful shutdown with timeout
+            logger.info("Waiting for prefetch thread to finish...")
+            self.prefetch_thread.join(timeout=10)
+
+            if self.prefetch_thread.is_alive():
+                logger.warning("Prefetch thread did not terminate within timeout")
+            else:
+                logger.info("Prefetch thread terminated successfully")
 
         logger.info("Query prefetching stopped")
 
