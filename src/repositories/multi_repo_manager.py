@@ -82,6 +82,21 @@ class MultiRepositoryManager:
         """
         import hashlib
 
+        # HIGH PRIORITY FIX: Validate inputs
+        if not name or not isinstance(name, str):
+            raise ValueError("Repository name must be a non-empty string")
+
+        if not path or not isinstance(path, str):
+            raise ValueError("Repository path must be a non-empty string")
+
+        # Verify path exists and is a directory
+        repo_path = Path(path)
+        if not repo_path.exists():
+            raise ValueError(f"Repository path does not exist: {path}")
+
+        if not repo_path.is_dir():
+            raise ValueError(f"Repository path must be a directory: {path}")
+
         # Generate ID from path
         repo_id = hashlib.md5(path.encode()).hexdigest()[:12]
 
@@ -89,11 +104,6 @@ class MultiRepositoryManager:
         if repo_id in self.repositories:
             logger.warning(f"Repository already exists: {name}")
             return self.repositories[repo_id]
-
-        # Verify path exists
-        repo_path = Path(path)
-        if not repo_path.exists():
-            raise ValueError(f"Repository path does not exist: {path}")
 
         # Create repository
         repo = Repository(
@@ -503,17 +513,63 @@ class MultiRepositoryManager:
             input_path: Input file path
             merge: Merge with existing (True) or replace (False)
         """
-        config_data = json.loads(input_path.read_text())
+        # HIGH PRIORITY FIX: Validate input and provide detailed error messages
+        if not input_path.exists():
+            raise ValueError(f"Import file does not exist: {input_path}")
+
+        if not input_path.is_file():
+            raise ValueError(f"Import path must be a file: {input_path}")
+
+        try:
+            config_data = json.loads(input_path.read_text())
+        except json.JSONDecodeError as e:
+            raise ValueError(f"Invalid JSON in import file: {e}")
+        except Exception as e:
+            raise ValueError(f"Error reading import file: {e}")
+
+        # HIGH PRIORITY FIX: Validate structure
+        if not isinstance(config_data, dict):
+            raise ValueError("Import file must contain a JSON object")
+
+        repositories = config_data.get('repositories', [])
+        if not isinstance(repositories, list):
+            raise ValueError("'repositories' field must be a list")
 
         if not merge:
             self.repositories.clear()
 
-        for repo_data in config_data.get('repositories', []):
-            repo = Repository.from_dict(repo_data)
-            self.repositories[repo.id] = repo
+        # HIGH PRIORITY FIX: Validate each repository before importing
+        imported_count = 0
+        errors = []
+
+        for i, repo_data in enumerate(repositories):
+            try:
+                if not isinstance(repo_data, dict):
+                    raise ValueError(f"Repository entry {i} must be an object")
+
+                # Validate required fields
+                required_fields = ['id', 'name', 'path']
+                for field in required_fields:
+                    if field not in repo_data:
+                        raise ValueError(f"Missing required field: {field}")
+
+                repo = Repository.from_dict(repo_data)
+                self.repositories[repo.id] = repo
+                imported_count += 1
+
+            except Exception as e:
+                error_msg = f"Error importing repository {i}: {e}"
+                logger.error(error_msg)
+                errors.append(error_msg)
 
         self._save_repositories()
-        logger.info(f"Imported {len(config_data.get('repositories', []))} repositories")
+
+        if errors:
+            logger.warning(f"Imported {imported_count} repositories with {len(errors)} errors")
+            # Raise exception with all errors
+            raise ValueError(f"Import completed with errors:\n" + "\n".join(errors))
+
+        logger.info(f"Imported {imported_count} repositories successfully")
 
     def _load_repositories(self):
         """Load repositories from config file."""
@@ -521,16 +577,36 @@ class MultiRepositoryManager:
             return
 
         try:
-            config_data = json.loads(self.config_file.read_text())
+            # HIGH PRIORITY FIX: Explicit JSON error handling
+            try:
+                config_data = json.loads(self.config_file.read_text())
+            except json.JSONDecodeError as e:
+                logger.error(f"Malformed JSON in repository config: {e}")
+                raise ValueError(f"Repository configuration file contains invalid JSON") from e
 
-            for repo_data in config_data.get('repositories', []):
-                repo = Repository.from_dict(repo_data)
-                self.repositories[repo.id] = repo
+            # HIGH PRIORITY FIX: Validate structure
+            if not isinstance(config_data, dict):
+                raise ValueError("Repository configuration must be a JSON object")
+
+            repositories = config_data.get('repositories', [])
+            if not isinstance(repositories, list):
+                raise ValueError("'repositories' field must be a list")
+
+            for repo_data in repositories:
+                try:
+                    repo = Repository.from_dict(repo_data)
+                    self.repositories[repo.id] = repo
+                except Exception as e:
+                    logger.warning(f"Skipping malformed repository entry: {e}")
 
             logger.info(f"Loaded {len(self.repositories)} repositories")
 
+        except ValueError:
+            # Re-raise ValueError (JSON errors)
+            raise
         except Exception as e:
             logger.error(f"Error loading repositories: {e}")
+            raise
 
     def _save_repositories(self):
         """Save repositories to config file."""

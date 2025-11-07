@@ -159,6 +159,7 @@ class PerformanceBenchmark:
 
         total_time = time.time() - start_time
 
+        # HIGH PRIORITY FIX: Handle empty latencies list edge case
         # Calculate statistics
         if latencies:
             latencies.sort()
@@ -184,8 +185,25 @@ class PerformanceBenchmark:
             logger.info(f"Query latency benchmark complete: {result.avg_latency_ms:.2f}ms avg")
 
             return result
-
-        return None
+        else:
+            # HIGH PRIORITY FIX: Return meaningful result even when all queries fail
+            logger.warning("No successful queries in benchmark")
+            result = BenchmarkResult(
+                name="Query Latency",
+                total_runs=len(queries),
+                successful_runs=0,
+                failed_runs=failed,
+                avg_latency_ms=0.0,
+                min_latency_ms=0.0,
+                max_latency_ms=0.0,
+                p50_latency_ms=0.0,
+                p95_latency_ms=0.0,
+                p99_latency_ms=0.0,
+                queries_per_second=0.0,
+                completed_at=datetime.now().isoformat()
+            )
+            self.results.append(result)
+            return result
 
     def benchmark_indexing(
         self,
@@ -232,6 +250,7 @@ class PerformanceBenchmark:
             except Exception as e:
                 logger.error(f"Indexing failed: {e}")
 
+        # HIGH PRIORITY FIX: Handle empty runs list edge case
         if runs:
             result = BenchmarkResult(
                 name=f"Indexing ({'incremental' if incremental else 'full'})",
@@ -252,8 +271,25 @@ class PerformanceBenchmark:
 
             self.results.append(result)
             return result
-
-        return None
+        else:
+            # HIGH PRIORITY FIX: Return meaningful result even when all runs fail
+            logger.warning("No successful indexing runs in benchmark")
+            result = BenchmarkResult(
+                name=f"Indexing ({'incremental' if incremental else 'full'})",
+                total_runs=3,
+                successful_runs=0,
+                failed_runs=3,
+                avg_latency_ms=0.0,
+                min_latency_ms=0.0,
+                max_latency_ms=0.0,
+                p50_latency_ms=0.0,
+                p95_latency_ms=0.0,
+                p99_latency_ms=0.0,
+                queries_per_second=0.0,
+                completed_at=datetime.now().isoformat()
+            )
+            self.results.append(result)
+            return result
 
     def benchmark_cache_effectiveness(
         self,
@@ -483,21 +519,42 @@ class PerformanceBenchmark:
 
     def _percentile(self, values: List[float], percentile: float) -> float:
         """
-        Calculate percentile.
+        Calculate percentile using linear interpolation.
+
+        HIGH PRIORITY FIX: Use proper percentile calculation instead of
+        simple index-based approach. Matches numpy.percentile behavior.
 
         Args:
-            values: Sorted list of values
+            values: List of values (will be sorted)
             percentile: Percentile (0-1)
 
         Returns:
             Percentile value
         """
         if not values:
-            return 0
+            return 0.0
+
+        if len(values) == 1:
+            return values[0]
 
         sorted_values = sorted(values)
-        index = int(len(sorted_values) * percentile)
-        return sorted_values[min(index, len(sorted_values) - 1)]
+
+        # HIGH PRIORITY FIX: Use linear interpolation for accurate percentiles
+        # Formula: position = (n - 1) * percentile, then interpolate
+        n = len(sorted_values)
+        position = (n - 1) * percentile
+
+        # Get the two surrounding indices
+        lower_idx = int(position)
+        upper_idx = min(lower_idx + 1, n - 1)
+
+        # Calculate interpolation weight
+        weight = position - lower_idx
+
+        # Interpolate between the two values
+        result = sorted_values[lower_idx] * (1 - weight) + sorted_values[upper_idx] * weight
+
+        return result
 
     def _get_memory_mb(self) -> Optional[float]:
         """

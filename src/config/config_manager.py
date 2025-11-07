@@ -145,17 +145,32 @@ class ConfigManager:
             config_path: Path to config file
         """
         try:
-            data = json.loads(config_path.read_text())
+            # HIGH PRIORITY FIX: Explicit JSON error handling with detailed messages
+            try:
+                data = json.loads(config_path.read_text())
+            except json.JSONDecodeError as e:
+                logger.error(f"Malformed JSON in {config_path}: {e}")
+                raise ValueError(f"Configuration file contains invalid JSON: {config_path}") from e
+
+            # HIGH PRIORITY FIX: Validate structure
+            if not isinstance(data, dict):
+                raise ValueError(f"Configuration file must contain a JSON object: {config_path}")
 
             # Update config
             for key, value in data.items():
                 if hasattr(self.config, key):
                     setattr(self.config, key, value)
+                else:
+                    logger.warning(f"Unknown config key in {config_path}: {key}")
 
             logger.info(f"Merged config from {config_path}")
 
+        except ValueError:
+            # Re-raise ValueError (JSON errors)
+            raise
         except Exception as e:
             logger.error(f"Error loading config from {config_path}: {e}")
+            raise
 
     def _load_from_env(self):
         """Load configuration from environment variables."""
@@ -174,14 +189,31 @@ class ConfigManager:
             value = os.getenv(env_var)
 
             if value is not None:
-                # Type conversion
-                if config_key in ['n_results', 'mcp_port', 'batch_size']:
-                    value = int(value)
-                elif config_key in ['use_cache', 'use_hybrid', 'lazy_loading']:
-                    value = value.lower() in ('true', '1', 'yes')
+                # HIGH PRIORITY FIX: Add error handling for type conversion
+                try:
+                    # Type conversion with validation
+                    if config_key in ['n_results', 'mcp_port', 'batch_size']:
+                        try:
+                            value = int(value)
+                            # Validate range
+                            if config_key == 'mcp_port' and not (1024 <= value <= 65535):
+                                logger.error(f"Invalid port in {env_var}: {value} (must be 1024-65535)")
+                                continue
+                            if config_key in ['n_results', 'batch_size'] and value < 1:
+                                logger.error(f"Invalid value in {env_var}: {value} (must be >= 1)")
+                                continue
+                        except ValueError:
+                            logger.error(f"Invalid integer in {env_var}: {value}")
+                            continue
 
-                setattr(self.config, config_key, value)
-                logger.debug(f"Loaded {config_key} from environment")
+                    elif config_key in ['use_cache', 'use_hybrid', 'lazy_loading']:
+                        value = value.lower() in ('true', '1', 'yes')
+
+                    setattr(self.config, config_key, value)
+                    logger.debug(f"Loaded {config_key} from environment")
+
+                except Exception as e:
+                    logger.error(f"Error loading {env_var}: {e}")
 
     def save_config(self, environment: Optional[str] = None):
         """
@@ -318,18 +350,37 @@ class ConfigManager:
         Args:
             input_path: Input file path
         """
+        # HIGH PRIORITY FIX: Validate input file
+        if not input_path.exists():
+            raise ValueError(f"Import file does not exist: {input_path}")
+
         try:
-            data = json.loads(input_path.read_text())
+            # HIGH PRIORITY FIX: Explicit JSON error handling
+            try:
+                data = json.loads(input_path.read_text())
+            except json.JSONDecodeError as e:
+                raise ValueError(f"Malformed JSON in import file: {e}") from e
+
+            # HIGH PRIORITY FIX: Validate structure
+            if not isinstance(data, dict):
+                raise ValueError("Import file must contain a JSON object")
 
             config_data = data.get('config', {})
+
+            if not isinstance(config_data, dict):
+                raise ValueError("'config' field must be a JSON object")
 
             for key, value in config_data.items():
                 self.set(key, value)
 
             logger.info(f"Configuration imported from {input_path}")
 
+        except ValueError:
+            # Re-raise ValueError (JSON and validation errors)
+            raise
         except Exception as e:
             logger.error(f"Error importing config: {e}")
+            raise
 
     def get_config_summary(self) -> Dict[str, Any]:
         """
