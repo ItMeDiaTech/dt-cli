@@ -116,9 +116,10 @@ class HybridSearchEngine:
         semantic_weight /= total_weight
         keyword_weight /= total_weight
 
-        # Normalize scores for semantic results (distances -> similarities)
+        # CRITICAL FIX: Normalize scores for semantic results (distances -> similarities)
+        # Use max(0, ...) to prevent negative scores when distance > 1
         semantic_scores = self._normalize_scores(
-            [1 - r.get('distance', 0) for r in semantic_results]
+            [max(0.0, 1 - r.get('distance', 0)) for r in semantic_results]
         )
 
         # Normalize scores for keyword results

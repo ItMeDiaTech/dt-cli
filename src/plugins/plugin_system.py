@@ -13,8 +13,11 @@ from pathlib import Path
 from typing import Dict, Any, List, Optional, Callable, Type
 import importlib.util
 import logging
+import json
+import hashlib
+import os
 from abc import ABC, abstractmethod
-from dataclasses import dataclass
+from dataclasses import dataclass, asdict
 
 logger = logging.getLogger(__name__)
 
@@ -387,7 +390,15 @@ class PluginManager:
 
     def load_plugin_from_file(self, plugin_file: Path) -> bool:
         """
-        Load plugin from Python file.
+        Load plugin from Python file with security validation.
+
+        Security measures:
+        - Requires plugin manifest file
+        - Validates file hash against manifest
+        - Checks file permissions
+        - Validates plugin ownership
+        - Calls initialize() method
+        - Default disabled state
 
         Args:
             plugin_file: Path to plugin file
@@ -396,6 +407,34 @@ class PluginManager:
             True if loaded successfully
         """
         try:
+            # Security check: Validate plugin file path
+            if not self._is_safe_plugin_path(plugin_file):
+                logger.error(f"Unsafe plugin path: {plugin_file}")
+                return False
+
+            # Security check: Load and validate manifest
+            manifest_file = plugin_file.with_suffix('.json')
+            if not manifest_file.exists():
+                logger.error(f"Plugin manifest not found: {manifest_file}")
+                logger.error("All plugins must have a manifest file for security")
+                return False
+
+            manifest = self._load_plugin_manifest(manifest_file)
+            if not manifest:
+                logger.error(f"Invalid plugin manifest: {manifest_file}")
+                return False
+
+            # Security check: Validate file hash
+            if not self._verify_plugin_hash(plugin_file, manifest):
+                logger.error(f"Plugin file hash mismatch: {plugin_file}")
+                logger.error("File may have been tampered with")
+                return False
+
+            # Security check: Validate file permissions
+            if not self._check_plugin_permissions(plugin_file):
+                logger.error(f"Unsafe plugin file permissions: {plugin_file}")
+                return False
+
             # Load module
             spec = importlib.util.spec_from_file_location("plugin", plugin_file)
             if not spec or not spec.loader:
@@ -406,31 +445,197 @@ class PluginManager:
             spec.loader.exec_module(module)
 
             # Look for plugin class
+            plugin_found = False
             for attr_name in dir(module):
                 attr = getattr(module, attr_name)
 
                 # Check if it's a plugin class
                 if (isinstance(attr, type) and
                     issubclass(attr, PluginBase) and
-                    attr != PluginBase):
+                    attr != PluginBase and
+                    not attr.__name__.endswith('Base')):
 
-                    # Instantiate and register
+                    # Instantiate plugin
                     plugin_instance = attr()
 
+                    # SECURITY FIX: Call initialize() method with config
+                    plugin_config = manifest.get('config', {})
+                    try:
+                        plugin_instance.initialize(plugin_config)
+                    except Exception as e:
+                        logger.error(f"Plugin initialization failed: {e}")
+                        return False
+
+                    # Create metadata from manifest
+                    metadata = PluginMetadata(
+                        name=manifest.get('name', plugin_instance.get_name()),
+                        version=manifest.get('version', plugin_instance.get_version()),
+                        author=manifest.get('author', 'Unknown'),
+                        description=manifest.get('description', ''),
+                        plugin_type=manifest.get('type', 'unknown'),
+                        enabled=manifest.get('enabled', False)  # SECURITY: Default disabled
+                    )
+
+                    # Register plugin
                     if isinstance(plugin_instance, QueryProcessorPlugin):
-                        self.register_query_processor(plugin_instance)
+                        self.register_query_processor(plugin_instance, metadata)
                     elif isinstance(plugin_instance, ResultFilterPlugin):
-                        self.register_result_filter(plugin_instance)
+                        self.register_result_filter(plugin_instance, metadata)
                     elif isinstance(plugin_instance, CommandPlugin):
-                        self.register_command(plugin_instance)
+                        self.register_command(plugin_instance, metadata)
+                    else:
+                        logger.warning(f"Unknown plugin type for {plugin_file}")
+                        return False
 
-                    return True
+                    plugin_found = True
+                    logger.info(f"Successfully loaded plugin: {manifest.get('name')}")
+                    break
 
-            logger.warning(f"No plugin class found in {plugin_file}")
-            return False
+            if not plugin_found:
+                logger.warning(f"No valid plugin class found in {plugin_file}")
+                return False
+
+            return True
 
         except Exception as e:
             logger.error(f"Error loading plugin from {plugin_file}: {e}")
+            import traceback
+            logger.debug(traceback.format_exc())
+            return False
+
+    def _is_safe_plugin_path(self, plugin_file: Path) -> bool:
+        """
+        Validate plugin file path for security.
+
+        Args:
+            plugin_file: Plugin file path
+
+        Returns:
+            True if path is safe
+        """
+        try:
+            # Resolve to absolute path
+            plugin_file = plugin_file.resolve()
+
+            # Must be a regular file
+            if not plugin_file.is_file():
+                return False
+
+            # Must be within plugin directory
+            if not plugin_file.is_relative_to(self.plugin_dir.resolve()):
+                logger.error(f"Plugin must be in plugin directory: {self.plugin_dir}")
+                return False
+
+            # Check for symlinks
+            if plugin_file.is_symlink():
+                logger.warning(f"Plugin is a symlink, checking target")
+                # Verify symlink target is also in plugin dir
+                real_path = plugin_file.readlink()
+                if not real_path.is_relative_to(self.plugin_dir.resolve()):
+                    return False
+
+            return True
+
+        except Exception as e:
+            logger.error(f"Error validating plugin path: {e}")
+            return False
+
+    def _load_plugin_manifest(self, manifest_file: Path) -> Optional[Dict[str, Any]]:
+        """
+        Load and validate plugin manifest.
+
+        Args:
+            manifest_file: Manifest file path
+
+        Returns:
+            Manifest dictionary or None
+        """
+        try:
+            with open(manifest_file, 'r') as f:
+                manifest = json.load(f)
+
+            # Validate required fields
+            required_fields = ['name', 'version', 'type', 'author', 'file_hash']
+            for field in required_fields:
+                if field not in manifest:
+                    logger.error(f"Missing required field in manifest: {field}")
+                    return None
+
+            # Validate plugin type
+            valid_types = ['query_processor', 'result_filter', 'command']
+            if manifest['type'] not in valid_types:
+                logger.error(f"Invalid plugin type: {manifest['type']}")
+                return None
+
+            return manifest
+
+        except json.JSONDecodeError as e:
+            logger.error(f"Invalid JSON in manifest: {e}")
+            return None
+        except Exception as e:
+            logger.error(f"Error loading manifest: {e}")
+            return None
+
+    def _verify_plugin_hash(self, plugin_file: Path, manifest: Dict[str, Any]) -> bool:
+        """
+        Verify plugin file hash matches manifest.
+
+        Args:
+            plugin_file: Plugin file path
+            manifest: Plugin manifest
+
+        Returns:
+            True if hash matches
+        """
+        try:
+            # Calculate file hash
+            hasher = hashlib.sha256()
+            with open(plugin_file, 'rb') as f:
+                while chunk := f.read(8192):
+                    hasher.update(chunk)
+
+            file_hash = hasher.hexdigest()
+            manifest_hash = manifest.get('file_hash', '')
+
+            if file_hash != manifest_hash:
+                logger.error(f"Hash mismatch: expected {manifest_hash}, got {file_hash}")
+                return False
+
+            return True
+
+        except Exception as e:
+            logger.error(f"Error verifying plugin hash: {e}")
+            return False
+
+    def _check_plugin_permissions(self, plugin_file: Path) -> bool:
+        """
+        Check plugin file permissions.
+
+        Args:
+            plugin_file: Plugin file path
+
+        Returns:
+            True if permissions are safe
+        """
+        try:
+            stat_info = plugin_file.stat()
+
+            # Check if world-writable
+            if stat_info.st_mode & 0o002:
+                logger.error("Plugin file is world-writable")
+                return False
+
+            # Check if owned by current user or root
+            current_uid = os.getuid() if hasattr(os, 'getuid') else None
+            if current_uid is not None:
+                if stat_info.st_uid not in (current_uid, 0):
+                    logger.warning(f"Plugin owned by different user: {stat_info.st_uid}")
+                    # Don't fail, just warn
+
+            return True
+
+        except Exception as e:
+            logger.error(f"Error checking plugin permissions: {e}")
             return False
 
     def _discover_plugins(self):
@@ -458,8 +663,9 @@ class PluginManager:
         if plugin_name in self.metadata:
             return self.metadata[plugin_name].enabled
 
-        # Default to enabled if no metadata
-        return True
+        # SECURITY FIX: Default to disabled if no metadata
+        # Plugins must explicitly be enabled
+        return False
 
 
 # Example built-in plugins

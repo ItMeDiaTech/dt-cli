@@ -316,18 +316,47 @@ class DataImporter:
             logger.warning(f"Failed to import configuration: {e}")
 
     def _import_index(self, import_dir: Path):
-        """Import vector index."""
+        """Import vector index with atomic operations to prevent data loss."""
         try:
             index_import_dir = import_dir / 'index'
 
-            if index_import_dir.exists():
-                target_db_path = Path.cwd() / 'chroma_db'
+            if not index_import_dir.exists():
+                return
 
+            target_db_path = Path.cwd() / 'chroma_db'
+            temp_db_path = Path.cwd() / 'chroma_db.new'
+            backup_db_path = Path.cwd() / 'chroma_db.backup'
+
+            # CRITICAL FIX: Use atomic operations
+            try:
+                # Step 1: Copy to temporary location
+                if temp_db_path.exists():
+                    shutil.rmtree(temp_db_path)
+                shutil.copytree(index_import_dir, temp_db_path)
+                logger.info("Copied index to temporary location")
+
+                # Step 2: Backup original if it exists
                 if target_db_path.exists():
-                    shutil.rmtree(target_db_path)
+                    if backup_db_path.exists():
+                        shutil.rmtree(backup_db_path)
+                    shutil.move(str(target_db_path), str(backup_db_path))
+                    logger.info("Backed up original index")
 
-                shutil.copytree(index_import_dir, target_db_path)
-                logger.info("Imported index")
+                # Step 3: Move new index into place
+                shutil.move(str(temp_db_path), str(target_db_path))
+                logger.info("Imported index successfully")
+
+                # Step 4: Remove backup
+                if backup_db_path.exists():
+                    shutil.rmtree(backup_db_path)
+
+            except Exception as e:
+                # Restore from backup if something went wrong
+                logger.error(f"Import failed, attempting to restore backup: {e}")
+                if backup_db_path.exists() and not target_db_path.exists():
+                    shutil.move(str(backup_db_path), str(target_db_path))
+                    logger.info("Restored original index from backup")
+                raise
 
         except Exception as e:
             logger.warning(f"Failed to import index: {e}")

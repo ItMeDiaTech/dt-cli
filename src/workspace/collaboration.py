@@ -141,8 +141,9 @@ class WorkspaceManager:
         self.workspaces: Dict[str, Workspace] = {}
         self.activity_log: List[ActivityEntry] = []
 
-        # Load workspaces
+        # Load workspaces and activity log
         self._load_workspaces()
+        self._load_activity_log()
 
     def create_workspace(
         self,
@@ -460,13 +461,24 @@ class WorkspaceManager:
         searches = []
 
         for search in workspace.shared_searches.values():
-            # Check if shared with this user
-            if not search.shared_with or user_id in search.shared_with:
-                # Filter by tags
-                if tags and not any(tag in search.tags for tag in tags):
-                    continue
+            # SECURITY FIX: Check if shared with this user
+            # Empty shared_with means all workspace members, not "nobody"
+            is_shared = False
+            if search.shared_with:
+                # Explicit list: check if user is in it
+                is_shared = user_id in search.shared_with
+            else:
+                # Empty list means shared with all workspace members
+                is_shared = user_id in workspace.members
 
-                searches.append(search)
+            if not is_shared:
+                continue
+
+            # Filter by tags
+            if tags and not any(tag in search.tags for tag in tags):
+                continue
+
+            searches.append(search)
 
         return searches
 
@@ -501,17 +513,28 @@ class WorkspaceManager:
         snippets = []
 
         for snippet in workspace.shared_snippets.values():
-            # Check if shared with this user
-            if not snippet.shared_with or user_id in snippet.shared_with:
-                # Filter by tags
-                if tags and not any(tag in snippet.tags for tag in tags):
-                    continue
+            # SECURITY FIX: Check if shared with this user
+            # Empty shared_with means all workspace members, not "nobody"
+            is_shared = False
+            if snippet.shared_with:
+                # Explicit list: check if user is in it
+                is_shared = user_id in snippet.shared_with
+            else:
+                # Empty list means shared with all workspace members
+                is_shared = user_id in workspace.members
 
-                # Filter by language
-                if language and snippet.language != language:
-                    continue
+            if not is_shared:
+                continue
 
-                snippets.append(snippet)
+            # Filter by tags
+            if tags and not any(tag in snippet.tags for tag in tags):
+                continue
+
+            # Filter by language
+            if language and snippet.language != language:
+                continue
+
+            snippets.append(snippet)
 
         return snippets
 
@@ -701,7 +724,7 @@ class WorkspaceManager:
         resource_id: str,
         details: Optional[Dict[str, Any]] = None
     ):
-        """Log activity entry."""
+        """Log activity entry and persist to disk."""
         entry = ActivityEntry(
             id=self._generate_id(f"{workspace_id}_{user_id}_{action}"),
             workspace_id=workspace_id,
@@ -715,11 +738,16 @@ class WorkspaceManager:
 
         self.activity_log.append(entry)
 
+        # CRITICAL FIX: Persist activity to disk immediately
+        self._save_activity_entry(entry)
+
         # Update member last active
         workspace = self.workspaces.get(workspace_id)
         if workspace and user_id in workspace.members:
             workspace.members[user_id].last_active = entry.timestamp
             workspace.members[user_id].activity_count += 1
+            # Save workspace with updated member info
+            self._save_workspace(workspace)
 
     def _generate_id(self, base: str) -> str:
         """Generate unique ID."""
@@ -737,9 +765,60 @@ class WorkspaceManager:
 
         workspace_file.write_text(json.dumps(data, indent=2))
 
+    def _save_activity_entry(self, entry: ActivityEntry):
+        """
+        Save single activity entry to JSONL file.
+
+        Uses append-only JSONL format for efficiency and crash safety.
+        """
+        try:
+            activity_file = self.storage_path / 'activity.jsonl'
+
+            # Append entry as single JSON line
+            with open(activity_file, 'a') as f:
+                json.dump(asdict(entry), f)
+                f.write('\n')
+                f.flush()  # Ensure written to disk
+
+        except Exception as e:
+            logger.error(f"Failed to save activity entry: {e}")
+
+    def _load_activity_log(self):
+        """Load activity log from JSONL file."""
+        try:
+            activity_file = self.storage_path / 'activity.jsonl'
+
+            if not activity_file.exists():
+                return
+
+            with open(activity_file, 'r') as f:
+                for line_num, line in enumerate(f, 1):
+                    line = line.strip()
+                    if not line:
+                        continue
+
+                    try:
+                        data = json.loads(line)
+                        entry = ActivityEntry(**data)
+                        self.activity_log.append(entry)
+
+                    except json.JSONDecodeError as e:
+                        logger.error(f"Invalid JSON at line {line_num}: {e}")
+                    except Exception as e:
+                        logger.error(f"Failed to parse activity entry at line {line_num}: {e}")
+
+            logger.info(f"Loaded {len(self.activity_log)} activity entries")
+
+        except Exception as e:
+            logger.error(f"Failed to load activity log: {e}")
+
     def _load_workspaces(self):
         """Load workspaces from storage."""
         for workspace_file in self.storage_path.glob('*.json'):
+            # Skip activity log file
+            if workspace_file.name == 'activity.jsonl':
+                continue
+
             try:
                 data = json.loads(workspace_file.read_text())
 
