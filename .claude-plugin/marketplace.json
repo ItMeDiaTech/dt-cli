@@ -1,6 +1,6 @@
 {
   "$schema": "https://anthropic.com/claude-code/marketplace.schema.json",
-  "name": "ItMeDiaTech Plugin Marketplace",
+  "name": "itmediatech-plugin-marketplace",
   "version": "1.0.0",
   "description": "Official marketplace for dt-cli plugins and extensions",
   "owner": {
@@ -11,8 +11,7 @@
   },
   "plugins": [
     {
-      "id": "dt-cli-rag-maf",
-      "name": "RAG + Multi-Agent Framework Plugin",
+      "name": "rag-multi-agent-framework-plugin",
       "version": "1.0.0",
       "description": "Local RAG plugin with Multi-Agent Framework orchestration for context-aware development assistance",
       "author": {
@@ -20,20 +19,9 @@
         "email": "",
         "url": "https://github.com/ItMeDiaTech"
       },
-      "repository": {
-        "type": "git",
-        "url": "https://github.com/ItMeDiaTech/dt-cli"
-      },
-      "manifestUrl": "https://raw.githubusercontent.com/ItMeDiaTech/dt-cli/main/.claude-plugin/plugin.json",
-      "installUrl": "https://github.com/ItMeDiaTech/dt-cli",
-      "source": "https://github.com/ItMeDiaTech/dt-cli",
+      "repository": "https://github.com/ItMeDiaTech/dt-cli",
+      "source": "./",
       "category": "productivity",
-      "categories": [
-        "productivity",
-        "ai-tools",
-        "code-analysis",
-        "search"
-      ],
       "keywords": [
         "rag",
         "retrieval-augmented-generation",
@@ -47,15 +35,6 @@
         "local-ai"
       ],
       "license": "MIT",
-      "requires": {
-        "claude": ">=1.0.0",
-        "python": ">=3.8.0",
-        "node": ">=18.0.0"
-      },
-      "featured": true,
-      "verified": true,
-      "downloads": 0,
-      "rating": 5.0,
       "tags": ["official", "rag", "multi-agent", "local"]
     }
   ],
