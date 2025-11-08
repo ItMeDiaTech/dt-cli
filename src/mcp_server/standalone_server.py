@@ -23,6 +23,7 @@ from maf import AgentOrchestrator
 from llm import LLMProviderFactory
 from config.llm_config import LLMConfig
 from debugging import DebugAgent, CodeReviewAgent
+from graph import KnowledgeGraph, CodeAnalyzer
 
 # Configure logging
 logging.basicConfig(
@@ -60,6 +61,18 @@ class ReviewRequest(BaseModel):
     code: str
     file_path: Optional[str] = None
     language: str = "python"
+
+
+class GraphBuildRequest(BaseModel):
+    """Request model for building knowledge graph."""
+    path: str  # Directory or file to analyze
+
+
+class GraphQueryRequest(BaseModel):
+    """Request model for graph queries."""
+    entity_name: str
+    entity_type: Optional[str] = None
+    query_type: str = "dependencies"  # dependencies, dependents, usages, impact
 
 
 class StandaloneMCPServer:
@@ -133,6 +146,11 @@ class StandaloneMCPServer:
             llm_provider=self.llm,
             rag_engine=self.rag_engine
         )
+
+        # Initialize knowledge graph
+        logger.info("Initializing knowledge graph...")
+        self.knowledge_graph = KnowledgeGraph()
+        self.code_analyzer = CodeAnalyzer(self.knowledge_graph)
 
         # Setup routes
         self._setup_routes()
@@ -434,6 +452,125 @@ class StandaloneMCPServer:
             except Exception as e:
                 logger.error(f"Review error: {e}")
                 raise HTTPException(status_code=500, detail=str(e))
+
+        @self.app.post("/graph/build")
+        async def build_graph(request: GraphBuildRequest):
+            """
+            Build or rebuild the knowledge graph.
+
+            Analyzes code files to extract:
+            - Import dependencies
+            - Function calls
+            - Class inheritance
+            - Code relationships
+            """
+            try:
+                # Clear existing graph
+                self.knowledge_graph.clear()
+
+                # Analyze path
+                if os.path.isdir(request.path):
+                    self.code_analyzer.analyze_directory(request.path)
+                elif os.path.isfile(request.path):
+                    self.code_analyzer.analyze_file(request.path)
+                else:
+                    raise HTTPException(status_code=400, detail="Invalid path")
+
+                stats = self.knowledge_graph.get_stats()
+                return {
+                    "status": "built",
+                    "path": request.path,
+                    "stats": stats
+                }
+
+            except Exception as e:
+                logger.error(f"Graph build error: {e}")
+                raise HTTPException(status_code=500, detail=str(e))
+
+        @self.app.post("/graph/query")
+        async def query_graph(request: GraphQueryRequest):
+            """
+            Query the knowledge graph.
+
+            Supported query types:
+            - dependencies: What does this entity depend on?
+            - dependents: What depends on this entity?
+            - usages: Where is this entity used?
+            - impact: What's the impact of changing this entity?
+            """
+            try:
+                entity = self.knowledge_graph.get_entity(
+                    request.entity_name,
+                    request.entity_type
+                )
+
+                if not entity:
+                    raise HTTPException(
+                        status_code=404,
+                        detail=f"Entity '{request.entity_name}' not found"
+                    )
+
+                if request.query_type == "dependencies":
+                    deps = self.knowledge_graph.get_dependencies(entity)
+                    return {
+                        "entity": request.entity_name,
+                        "query_type": "dependencies",
+                        "results": [
+                            {
+                                "name": dep.name,
+                                "type": dep.entity_type,
+                                "file": dep.file_path
+                            }
+                            for dep in deps
+                        ]
+                    }
+
+                elif request.query_type == "dependents":
+                    deps = self.knowledge_graph.get_dependents(entity)
+                    return {
+                        "entity": request.entity_name,
+                        "query_type": "dependents",
+                        "results": [
+                            {
+                                "name": dep.name,
+                                "type": dep.entity_type,
+                                "file": dep.file_path
+                            }
+                            for dep in deps
+                        ]
+                    }
+
+                elif request.query_type == "usages":
+                    usages = self.knowledge_graph.find_usages(
+                        request.entity_name,
+                        request.entity_type
+                    )
+                    return {
+                        "entity": request.entity_name,
+                        "query_type": "usages",
+                        "results": usages
+                    }
+
+                elif request.query_type == "impact":
+                    impact = self.knowledge_graph.get_impact_analysis(entity)
+                    return impact
+
+                else:
+                    raise HTTPException(
+                        status_code=400,
+                        detail=f"Unknown query type: {request.query_type}"
+                    )
+
+            except HTTPException:
+                raise
+            except Exception as e:
+                logger.error(f"Graph query error: {e}")
+                raise HTTPException(status_code=500, detail=str(e))
+
+        @self.app.get("/graph/stats")
+        async def get_graph_stats():
+            """Get knowledge graph statistics."""
+            return self.knowledge_graph.get_stats()
 
     async def _stream_response(
         self,
