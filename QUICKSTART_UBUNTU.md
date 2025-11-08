@@ -34,7 +34,7 @@ During installation, choose one of:
 ### Option 3: Skip (Configure Later)
 ```bash
 # Configure later with:
-claude-code auth login
+claude auth login
 # OR
 export ANTHROPIC_API_KEY='your-key-here'
 ```
@@ -48,7 +48,7 @@ source ~/.bashrc
 
 ### 2. Verify Installation
 ```bash
-claude-code --version
+claude --version
 ~/dt-cli/rag-maf status
 ```
 
@@ -58,7 +58,7 @@ claude-code --version
 cd /path/to/your/project
 
 # Start Claude Code
-claude-code
+claude
 
 # Use RAG commands
 /rag-status
@@ -131,7 +131,7 @@ sudo chown -R $USER:$USER dt-cli/
 
 - Installation issues: Check [UBUNTU_DEPLOYMENT_GUIDE.md](./UBUNTU_DEPLOYMENT_GUIDE.md)
 - RAG plugin issues: Check logs in `~/dt-cli/logs/`
-- Claude Code issues: Run `claude-code --help`
+- Claude Code issues: Run `claude --help`
 
 ---
 

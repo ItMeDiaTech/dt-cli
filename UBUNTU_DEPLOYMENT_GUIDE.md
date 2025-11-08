@@ -102,7 +102,7 @@ ssh -L 8080:localhost:8080 user@your-server.com
 
 ```bash
 # Run authentication
-claude-code auth login --port 8080
+claude auth login --port 8080
 ```
 
 **On your local machine:**
@@ -208,8 +208,8 @@ CMD ["/bin/bash"]
 **Build and run:**
 
 ```bash
-docker build -t claude-code-rag .
-docker run -it -v $(pwd):/workspace claude-code-rag
+docker build -t claude-rag .
+docker run -it -v $(pwd):/workspace claude-rag
 ```
 
 ---
@@ -220,7 +220,7 @@ docker run -it -v $(pwd):/workspace claude-code-rag
 
 ```bash
 # Check Claude Code
-claude-code --version
+claude --version
 
 # Check Python environment
 source ~/dt-cli/venv/bin/activate
@@ -234,10 +234,10 @@ python3 --version
 
 ```bash
 # Test with a simple command
-claude-code --help
+claude --help
 
 # Start an interactive session
-claude-code
+claude
 ```
 
 ### 3. Configure RAG Plugin
@@ -248,7 +248,7 @@ cd /path/to/your/project
 ~/dt-cli/rag-maf index
 
 # Start Claude Code with RAG
-claude-code
+claude
 ```
 
 Inside Claude Code:
@@ -313,7 +313,7 @@ scp -r dt-cli/ user@server.com:~/
 # On server
 cd dt-cli
 pip install --no-index --find-links=./packages/ -r requirements.txt
-npm install -g ./anthropic-ai-claude-code-*.tgz
+npm install -g ./anthropic-ai-*.tgz
 ```
 
 ### Scenario 3: Corporate Network / Proxy
@@ -396,10 +396,10 @@ tail -f ~/dt-cli/logs/*.log
 
 ```bash
 # Clear existing auth
-claude-code auth logout
+claude auth logout
 
 # Re-authenticate
-claude-code auth login
+claude auth login
 
 # Or use API key
 export ANTHROPIC_API_KEY='your-key'
@@ -481,6 +481,9 @@ git pull origin main
 
 ```bash
 sudo npm update -g @anthropic-ai/claude-code
+
+# Verify new version
+claude --version
 ```
 
 ### Update Python Dependencies
@@ -502,7 +505,7 @@ pip install --upgrade -r requirements.txt
 uname -a
 python3 --version
 node --version
-claude-code --version
+claude --version
 
 # Service status
 ~/dt-cli/rag-maf status
@@ -519,7 +522,7 @@ cat ~/dt-cli/logs/*.log
 sudo journalctl -u rag-maf-mcp -n 100
 
 # Claude Code logs
-cat ~/.claude-code/logs/*.log
+cat ~/.claude/logs/*.log
 ```
 
 ### Common Commands Reference
@@ -538,13 +541,13 @@ cat ~/.claude-code/logs/*.log
 ~/dt-cli/rag-maf index
 
 # Start Claude Code session
-claude-code
+claude
 
 # Authenticate Claude Code
-claude-code auth login
+claude auth login
 
 # Check Claude Code auth status
-claude-code auth status
+claude auth status
 ```
 
 ---
@@ -559,7 +562,7 @@ curl -sSL https://raw.githubusercontent.com/your-username/dt-cli/main/ubuntu-ins
 git clone <repo-url> dt-cli && cd dt-cli && chmod +x ubuntu-install.sh && ./ubuntu-install.sh
 
 # Verify everything works
-source ~/.bashrc && claude-code --version && ~/dt-cli/rag-maf status
+source ~/.bashrc && claude --version && ~/dt-cli/rag-maf status
 ```
 
 ---
@@ -568,7 +571,7 @@ source ~/.bashrc && claude-code --version && ~/dt-cli/rag-maf status
 
 After installation, verify:
 
-- [ ] `claude-code --version` returns version number
+- [ ] `claude --version` returns version number
 - [ ] `python3 --version` shows 3.8+
 - [ ] `node --version` shows 18+
 - [ ] `~/dt-cli/rag-maf status` runs without errors
@@ -584,7 +587,7 @@ After installation, verify:
 Once installation is complete and verified, you can:
 
 1. Navigate to any project directory
-2. Run `claude-code`
+2. Run `claude`
 3. Use RAG-powered slash commands:
    - `/rag-query <question>`
    - `/rag-index`

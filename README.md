@@ -54,7 +54,7 @@ Simply install the plugin in Claude Code:
 
 ```bash
 # The plugin will auto-install all dependencies and configure itself
-claude-code install-plugin dt-cli
+claude install-plugin dt-cli
 ```
 
 Or manually:

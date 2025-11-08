@@ -154,8 +154,8 @@ echo -e "${BLUE}╚════════════════════�
 echo ""
 
 # Check if Claude Code is already installed
-if command -v claude-code &> /dev/null; then
-    CLAUDE_VERSION=$(claude-code --version 2>/dev/null || echo "unknown")
+if command -v claude &> /dev/null; then
+    CLAUDE_VERSION=$(claude --version 2>/dev/null || echo "unknown")
     print_info "Claude Code already installed: $CLAUDE_VERSION"
     read -p "Reinstall Claude Code? (y/n) " -n 1 -r
     echo
@@ -172,8 +172,8 @@ else
 fi
 
 # Verify installation
-if command -v claude-code &> /dev/null; then
-    CLAUDE_VERSION=$(claude-code --version 2>/dev/null || echo "installed")
+if command -v claude &> /dev/null; then
+    CLAUDE_VERSION=$(claude --version 2>/dev/null || echo "installed")
     print_status "Claude Code verified: $CLAUDE_VERSION"
 else
     print_error "Claude Code installation failed"
@@ -208,11 +208,11 @@ case $AUTH_CHOICE in
         read -p "Press Enter to continue..."
 
         # Try to authenticate
-        if claude-code auth login 2>/dev/null; then
+        if claude auth login 2>/dev/null; then
             print_status "Authentication successful!"
         else
             print_warning "Interactive auth may require additional steps"
-            print_info "Run 'claude-code auth login' manually if needed"
+            print_info "Run 'claude auth login' manually if needed"
         fi
         ;;
     2)
@@ -237,7 +237,7 @@ case $AUTH_CHOICE in
         ;;
     3)
         print_info "Skipping authentication. Configure later with:"
-        echo "  - claude-code auth login (interactive)"
+        echo "  - claude auth login (interactive)"
         echo "  - export ANTHROPIC_API_KEY='your-key' (API key)"
         ;;
     *)
@@ -474,11 +474,11 @@ echo "1️⃣  Reload your shell configuration:"
 echo "   ${YELLOW}source ~/.bashrc${NC}"
 echo ""
 echo "2️⃣  Verify Claude Code installation:"
-echo "   ${YELLOW}claude-code --version${NC}"
+echo "   ${YELLOW}claude --version${NC}"
 echo ""
 echo "3️⃣  Start a Claude Code session:"
 echo "   ${YELLOW}cd /path/to/your/project${NC}"
-echo "   ${YELLOW}claude-code${NC}"
+echo "   ${YELLOW}claude${NC}"
 echo ""
 echo "4️⃣  Use RAG slash commands in Claude Code:"
 echo "   ${YELLOW}/rag-query how does authentication work?${NC}"
