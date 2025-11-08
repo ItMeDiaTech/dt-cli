@@ -32,6 +32,24 @@ A comprehensive Retrieval-Augmented Generation (RAG) plugin for Claude Code that
 
 ## Installation
 
+### Ubuntu Server (Complete Setup)
+
+For a complete installation on Ubuntu Server including Claude Code + dt-cli:
+
+```bash
+# Quick start
+git clone <repository-url> dt-cli
+cd dt-cli
+chmod +x ubuntu-install.sh
+./ubuntu-install.sh
+```
+
+📖 **Installation Guides:**
+- 🚀 [Quick Start Guide](./QUICKSTART_UBUNTU.md) - Get started in 5 minutes
+- 📋 [Complete Deployment Guide](./UBUNTU_DEPLOYMENT_GUIDE.md) - Full documentation with authentication, troubleshooting, and advanced scenarios
+
+### Standard Installation
+
 Simply install the plugin in Claude Code:
 
 ```bash
