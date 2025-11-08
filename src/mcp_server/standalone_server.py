@@ -18,6 +18,7 @@ import os
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from rag import QueryEngine
+from rag.auto_trigger import AutoTrigger, TriggerStats, TriggerAction
 from maf import AgentOrchestrator
 from llm import LLMProviderFactory
 from config.llm_config import LLMConfig
@@ -33,8 +34,10 @@ logger = logging.getLogger(__name__)
 class QueryRequest(BaseModel):
     """Request model for queries."""
     query: str
-    use_rag: bool = True
+    use_rag: Optional[bool] = None  # None = auto-trigger, True/False = manual override
+    auto_trigger: bool = True  # Enable auto-triggering
     stream: bool = False
+    context_files: Optional[List[str]] = None  # Files in user's context
 
 
 class GenerateRequest(BaseModel):
@@ -97,6 +100,15 @@ class StandaloneMCPServer:
         logger.info("Initializing MAF system...")
         self.orchestrator = AgentOrchestrator(rag_engine=self.rag_engine)
 
+        # Initialize auto-trigger system
+        logger.info("Initializing auto-trigger system...")
+        auto_trigger_config = self.config.get_auto_trigger_config()
+        self.auto_trigger = AutoTrigger(
+            confidence_threshold=auto_trigger_config.get('threshold', 0.7),
+            show_activity=auto_trigger_config.get('show_activity', True)
+        )
+        self.trigger_stats = TriggerStats()
+
         # Setup routes
         self._setup_routes()
 
@@ -144,14 +156,45 @@ class StandaloneMCPServer:
         @self.app.post("/query")
         async def query(request: QueryRequest):
             """
-            Process a query with optional RAG.
+            Process a query with intelligent auto-triggering.
 
-            This is the main endpoint for asking questions.
+            This endpoint automatically determines whether to use RAG, agents,
+            or direct LLM based on query intent classification.
             """
             try:
+                # Update context with files if provided
+                if request.context_files:
+                    for file_path in request.context_files:
+                        self.auto_trigger.add_file_to_context(file_path)
+
+                # Decide what to trigger
+                use_rag = request.use_rag
+                decision = None
+                activity_message = None
+
+                if request.auto_trigger and use_rag is None:
+                    # Auto-trigger: let the system decide
+                    decision = self.auto_trigger.decide(request.query)
+                    use_rag = decision.should_use_rag()
+
+                    # Record statistics
+                    self.trigger_stats.record(decision)
+
+                    # Get activity message
+                    primary_action = decision.primary_action()
+                    if self.auto_trigger.should_show_activity(primary_action):
+                        activity_message = self.auto_trigger.get_activity_message(primary_action)
+
+                    logger.info(
+                        f"Auto-trigger decision: {decision.reasoning}"
+                    )
+                elif use_rag is None:
+                    # Default to RAG if auto-trigger disabled and no manual override
+                    use_rag = True
+
                 # Retrieve context if RAG enabled
                 context = None
-                if request.use_rag:
+                if use_rag:
                     logger.info(f"Retrieving context for: {request.query}")
                     rag_results = self.rag_engine.query(
                         request.query,
@@ -167,7 +210,7 @@ class StandaloneMCPServer:
                 # Generate response
                 if request.stream:
                     return StreamingResponse(
-                        self._stream_response(request.query, context),
+                        self._stream_response(request.query, context, activity_message),
                         media_type="text/event-stream"
                     )
                 else:
@@ -177,11 +220,25 @@ class StandaloneMCPServer:
                         system_prompt="You are an expert coding assistant with access to the codebase."
                     )
 
-                    return {
+                    result = {
                         "response": response,
                         "context_used": len(context) if context else 0,
                         "provider": str(self.llm)
                     }
+
+                    # Add auto-trigger info if used
+                    if decision:
+                        result["auto_trigger"] = {
+                            "intent": decision.intent,
+                            "confidence": decision.confidence,
+                            "actions": [a.value for a in decision.actions],
+                            "reasoning": decision.reasoning
+                        }
+
+                    if activity_message:
+                        result["activity"] = activity_message
+
+                    return result
 
             except Exception as e:
                 logger.error(f"Query error: {e}")
@@ -269,10 +326,47 @@ class StandaloneMCPServer:
                 logger.error(f"Config reload error: {e}")
                 raise HTTPException(status_code=500, detail=str(e))
 
+        @self.app.get("/auto-trigger/stats")
+        async def get_trigger_stats():
+            """Get auto-trigger statistics."""
+            return self.trigger_stats.get_summary()
+
+        @self.app.get("/auto-trigger/context")
+        async def get_trigger_context():
+            """Get current auto-trigger context."""
+            return self.auto_trigger.get_context_summary()
+
+        @self.app.post("/auto-trigger/context/clear")
+        async def clear_trigger_context():
+            """Clear auto-trigger context."""
+            self.auto_trigger.clear_context()
+            return {"status": "cleared"}
+
+        @self.app.post("/auto-trigger/context/add-file")
+        async def add_context_file(file_path: str):
+            """Add a file to auto-trigger context."""
+            self.auto_trigger.add_file_to_context(file_path)
+            return {
+                "status": "added",
+                "file": file_path,
+                "context": self.auto_trigger.get_context_summary()
+            }
+
+        @self.app.post("/auto-trigger/context/remove-file")
+        async def remove_context_file(file_path: str):
+            """Remove a file from auto-trigger context."""
+            self.auto_trigger.remove_file_from_context(file_path)
+            return {
+                "status": "removed",
+                "file": file_path,
+                "context": self.auto_trigger.get_context_summary()
+            }
+
     async def _stream_response(
         self,
         prompt: str,
         context: Optional[List[str]] = None,
+        activity_message: Optional[str] = None,
         system_prompt: Optional[str] = None
     ):
         """
@@ -281,12 +375,17 @@ class StandaloneMCPServer:
         Args:
             prompt: User prompt
             context: Optional context
+            activity_message: Optional activity indicator
             system_prompt: Optional system prompt
 
         Yields:
             Server-sent events
         """
         try:
+            # Send activity message first if present
+            if activity_message:
+                yield f"data: {activity_message}\n\n"
+
             for chunk in self.llm.generate_streaming(
                 prompt=prompt,
                 context=context,
