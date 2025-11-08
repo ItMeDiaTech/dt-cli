@@ -24,6 +24,7 @@ from llm import LLMProviderFactory
 from config.llm_config import LLMConfig
 from debugging import DebugAgent, CodeReviewAgent
 from graph import KnowledgeGraph, CodeAnalyzer
+from evaluation import RAGASEvaluator, ABTester, HybridSearch
 
 # Configure logging
 logging.basicConfig(
@@ -73,6 +74,24 @@ class GraphQueryRequest(BaseModel):
     entity_name: str
     entity_type: Optional[str] = None
     query_type: str = "dependencies"  # dependencies, dependents, usages, impact
+
+
+class EvaluateRequest(BaseModel):
+    """Request model for RAG evaluation."""
+    query: str
+    retrieved_contexts: List[str]
+    generated_answer: str
+    ground_truth: Optional[str] = None
+
+
+class HybridSearchRequest(BaseModel):
+    """Request model for hybrid search."""
+    query: str
+    documents: List[str]
+    metadata: Optional[List[Dict]] = None
+    semantic_weight: float = 0.7
+    keyword_weight: float = 0.3
+    top_k: int = 5
 
 
 class StandaloneMCPServer:
@@ -151,6 +170,12 @@ class StandaloneMCPServer:
         logger.info("Initializing knowledge graph...")
         self.knowledge_graph = KnowledgeGraph()
         self.code_analyzer = CodeAnalyzer(self.knowledge_graph)
+
+        # Initialize evaluation system
+        logger.info("Initializing evaluation system...")
+        self.ragas_evaluator = RAGASEvaluator(llm_provider=self.llm)
+        self.ab_tester = ABTester(self.ragas_evaluator)
+        self.hybrid_search = HybridSearch()
 
         # Setup routes
         self._setup_routes()
@@ -571,6 +596,95 @@ class StandaloneMCPServer:
         async def get_graph_stats():
             """Get knowledge graph statistics."""
             return self.knowledge_graph.get_stats()
+
+        @self.app.post("/evaluate")
+        async def evaluate_rag(request: EvaluateRequest):
+            """
+            Evaluate RAG quality using RAGAS metrics.
+
+            Returns:
+            - Context relevance
+            - Answer faithfulness
+            - Answer relevance
+            - Context precision (if ground truth provided)
+            - Context recall (if ground truth provided)
+            - Overall score
+            """
+            try:
+                evaluation = self.ragas_evaluator.evaluate(
+                    query=request.query,
+                    retrieved_contexts=request.retrieved_contexts,
+                    generated_answer=request.generated_answer,
+                    ground_truth=request.ground_truth
+                )
+
+                return evaluation.to_dict()
+
+            except Exception as e:
+                logger.error(f"Evaluation error: {e}")
+                raise HTTPException(status_code=500, detail=str(e))
+
+        @self.app.post("/hybrid-search")
+        async def hybrid_search(request: HybridSearchRequest):
+            """
+            Perform hybrid search combining semantic and keyword search.
+
+            Combines:
+            - Semantic similarity (embeddings)
+            - Keyword relevance (BM25)
+
+            Returns ranked results with individual and combined scores.
+            """
+            try:
+                # Index documents
+                self.hybrid_search = HybridSearch(
+                    semantic_weight=request.semantic_weight,
+                    keyword_weight=request.keyword_weight
+                )
+                self.hybrid_search.index_documents(
+                    request.documents,
+                    request.metadata
+                )
+
+                # Perform search (semantic scores would come from embeddings)
+                # For now, using None to rely on keyword search
+                results = self.hybrid_search.search(
+                    request.query,
+                    semantic_scores=None,
+                    top_k=request.top_k
+                )
+
+                return {
+                    "query": request.query,
+                    "results": [r.to_dict() for r in results],
+                    "weights": {
+                        "semantic": request.semantic_weight,
+                        "keyword": request.keyword_weight
+                    }
+                }
+
+            except Exception as e:
+                logger.error(f"Hybrid search error: {e}")
+                raise HTTPException(status_code=500, detail=str(e))
+
+        @self.app.get("/evaluation/stats")
+        async def get_evaluation_stats():
+            """Get evaluation statistics from A/B testing."""
+            if not self.ab_tester.experiments:
+                return {
+                    "experiments": {},
+                    "total_experiments": 0
+                }
+
+            stats = {}
+            for name, evaluations in self.ab_tester.experiments.items():
+                metrics = self.ragas_evaluator.aggregate_metrics(evaluations)
+                stats[name] = metrics
+
+            return {
+                "experiments": stats,
+                "total_experiments": len(self.ab_tester.experiments)
+            }
 
     async def _stream_response(
         self,
