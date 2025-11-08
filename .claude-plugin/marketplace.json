@@ -1,0 +1,399 @@
+{
+
+  "name": "dt-cli-rag-maf",
+
+  "displayName": "RAG + Multi-Agent Framework Plugin",
+
+  "version": "1.0.0",
+
+  "description": "Local RAG plugin with Multi-Agent Framework orchestration for context-aware development assistance",
+
+  "author": {
+
+    "name": "ItMeDiaTech",
+
+    "email": "",
+
+    "url": "https://github.com/ItMeDiaTech"
+
+  },
+
+  "license": "MIT",
+
+  "repository": {
+
+    "type": "git",
+
+    "url": "https://github.com/ItMeDiaTech/dt-cli"
+
+  },
+
+  "homepage": "https://github.com/ItMeDiaTech/dt-cli",
+
+  "bugs": {
+
+    "url": "https://github.com/ItMeDiaTech/dt-cli/issues"
+
+  },
+
+  "keywords": [
+
+    "rag",
+
+    "retrieval-augmented-generation",
+
+    "vector-search",
+
+    "embeddings",
+
+    "multi-agent",
+
+    "maf",
+
+    "mcp",
+
+    "semantic-search",
+
+    "code-analysis",
+
+    "local-ai"
+
+  ],
+
+  "categories": [
+
+    "productivity",
+
+    "ai-tools",
+
+    "code-analysis",
+
+    "search"
+
+  ],
+
+  "icon": "��",
+
+  "requires": {
+
+    "claude": ">=1.0.0",
+
+    "python": ">=3.8.0",
+
+    "node": ">=18.0.0"
+
+  },
+
+  "main": "install.sh",
+
+  "installation": {
+
+    "type": "script",
+
+    "script": "./install.sh",
+
+    "postInstall": [
+
+      "chmod +x rag-maf",
+
+      "chmod +x rag-plugin-global",
+
+      "chmod +x .claude/hooks/SessionStart.sh"
+
+    ]
+
+  },
+
+  "features": [
+
+    {
+
+      "name": "RAG Search",
+
+      "description": "Semantic code search using local embeddings",
+
+      "commands": ["/rag-query", "/rag-index", "/rag-status"]
+
+    },
+
+    {
+
+      "name": "Multi-Agent Framework",
+
+      "description": "Intelligent task orchestration with specialized agents",
+
+      "commands": ["/rag-query-advanced"]
+
+    },
+
+    {
+
+      "name": "Knowledge Graph",
+
+      "description": "Code relationship mapping and exploration",
+
+      "commands": ["/rag-graph"]
+
+    },
+
+    {
+
+      "name": "Saved Searches",
+
+      "description": "Save and execute common search queries",
+
+      "commands": ["/rag-save", "/rag-searches", "/rag-exec"]
+
+    },
+
+    {
+
+      "name": "Performance Metrics",
+
+      "description": "System monitoring and performance dashboard",
+
+      "commands": ["/rag-metrics"]
+
+    }
+
+  ],
+
+  "commands": [
+
+    {
+
+      "name": "rag-query",
+
+      "description": "Query the RAG system for relevant code and documentation",
+
+      "usage": "/rag-query <question>"
+
+    },
+
+    {
+
+      "name": "rag-index",
+
+      "description": "Index or re-index the current codebase",
+
+      "usage": "/rag-index"
+
+    },
+
+    {
+
+      "name": "rag-status",
+
+      "description": "Check the status of the RAG and MAF systems",
+
+      "usage": "/rag-status"
+
+    },
+
+    {
+
+      "name": "rag-save",
+
+      "description": "Save a search query for quick access later",
+
+      "usage": "/rag-save <name> <query>"
+
+    },
+
+    {
+
+      "name": "rag-searches",
+
+      "description": "List all saved searches",
+
+      "usage": "/rag-searches"
+
+    },
+
+    {
+
+      "name": "rag-exec",
+
+      "description": "Execute a saved search by ID or name",
+
+      "usage": "/rag-exec <name>"
+
+    },
+
+    {
+
+      "name": "rag-graph",
+
+      "description": "Query knowledge graph for code relationships",
+
+      "usage": "/rag-graph <query>"
+
+    },
+
+    {
+
+      "name": "rag-metrics",
+
+      "description": "Display system metrics and performance dashboard",
+
+      "usage": "/rag-metrics"
+
+    },
+
+    {
+
+      "name": "rag-query-advanced",
+
+      "description": "Advanced RAG query with profiling and explanations",
+
+      "usage": "/rag-query-advanced [--profile] <query>"
+
+    }
+
+  ],
+
+  "hooks": [
+
+    {
+
+      "name": "SessionStart",
+
+      "type": "session-start",
+
+      "script": ".claude/hooks/SessionStart.sh",
+
+      "description": "Auto-start RAG system on session start"
+
+    }
+
+  ],
+
+  "mcp": {
+
+    "enabled": true,
+
+    "servers": [
+
+      {
+
+        "name": "rag-maf-plugin",
+
+        "url": "http://127.0.0.1:8765",
+
+        "description": "Local RAG with Multi-Agent Framework for context-aware development",
+
+        "autoStart": true
+
+      }
+
+    ]
+
+  },
+
+  "configuration": {
+
+    "embedding_model": {
+
+      "type": "string",
+
+      "default": "all-MiniLM-L6-v2",
+
+      "description": "Sentence transformer model for embeddings"
+
+    },
+
+    "chunk_size": {
+
+      "type": "number",
+
+      "default": 1000,
+
+      "description": "Size of text chunks for embedding"
+
+    },
+
+    "chunk_overlap": {
+
+      "type": "number",
+
+      "default": 200,
+
+      "description": "Overlap between chunks"
+
+    },
+
+    "max_results": {
+
+      "type": "number",
+
+      "default": 5,
+
+      "description": "Maximum search results to return"
+
+    },
+
+    "maf_enabled": {
+
+      "type": "boolean",
+
+      "default": true,
+
+      "description": "Enable Multi-Agent Framework"
+
+    }
+
+  },
+
+  "dependencies": {
+
+    "python": [
+
+      "chromadb>=0.4.22",
+
+      "sentence-transformers>=2.3.1",
+
+      "langchain>=0.1.0",
+
+      "langgraph>=0.0.26",
+
+      "fastapi>=0.109.0",
+
+      "uvicorn>=0.27.0"
+
+    ]
+
+  },
+
+  "systemRequirements": {
+
+    "os": ["linux", "darwin", "win32"],
+
+    "memory": "2GB",
+
+    "disk": "2GB"
+
+  },
+
+  "privacy": {
+
+    "dataCollection": "none",
+
+    "localOnly": true,
+
+    "description": "All processing happens locally. No data is sent to external servers."
+
+  },
+
+  "documentation": {
+
+    "readme": "README.md",
+
+    "quickstart": "QUICKSTART_UBUNTU.md",
+
+    "guide": "PLUGIN_USAGE.md",
+
+    "faq": "FAQ.md"
+
+  }
+
+}
