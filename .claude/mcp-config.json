@@ -1,0 +1,13 @@
+{
+  "mcpServers": {
+    "dt-cli": {
+      "command": "python",
+      "args": ["-m", "src.mcp_server.standalone_server", "--host", "127.0.0.1", "--port", "8765"],
+      "env": {
+        "PYTHONPATH": "${workspaceFolder}"
+      },
+      "description": "dt-cli RAG/MAF/LLM Server - 100% Open Source",
+      "timeout": 30000
+    }
+  }
+}
