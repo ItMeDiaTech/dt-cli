@@ -22,6 +22,7 @@ from rag.auto_trigger import AutoTrigger, TriggerStats, TriggerAction
 from maf import AgentOrchestrator
 from llm import LLMProviderFactory
 from config.llm_config import LLMConfig
+from debugging import DebugAgent, CodeReviewAgent
 
 # Configure logging
 logging.basicConfig(
@@ -46,6 +47,19 @@ class GenerateRequest(BaseModel):
     context: Optional[List[str]] = None
     system_prompt: Optional[str] = None
     stream: bool = False
+
+
+class DebugRequest(BaseModel):
+    """Request model for error debugging."""
+    error_output: str
+    auto_extract_code: bool = True
+
+
+class ReviewRequest(BaseModel):
+    """Request model for code review."""
+    code: str
+    file_path: Optional[str] = None
+    language: str = "python"
 
 
 class StandaloneMCPServer:
@@ -108,6 +122,17 @@ class StandaloneMCPServer:
             show_activity=auto_trigger_config.get('show_activity', True)
         )
         self.trigger_stats = TriggerStats()
+
+        # Initialize debugging agents
+        logger.info("Initializing debugging agents...")
+        self.debug_agent = DebugAgent(
+            llm_provider=self.llm,
+            rag_engine=self.rag_engine
+        )
+        self.review_agent = CodeReviewAgent(
+            llm_provider=self.llm,
+            rag_engine=self.rag_engine
+        )
 
         # Setup routes
         self._setup_routes()
@@ -361,6 +386,54 @@ class StandaloneMCPServer:
                 "file": file_path,
                 "context": self.auto_trigger.get_context_summary()
             }
+
+        @self.app.post("/debug")
+        async def debug_error(request: DebugRequest):
+            """
+            Analyze an error and provide debugging insights.
+
+            This endpoint uses the debug agent to:
+            - Parse error messages and stack traces
+            - Identify root causes
+            - Suggest fixes
+            - Find similar historical errors
+            """
+            try:
+                analysis = self.debug_agent.analyze_error(
+                    request.error_output,
+                    auto_extract_code=request.auto_extract_code
+                )
+
+                return analysis.to_dict()
+
+            except Exception as e:
+                logger.error(f"Debug error: {e}")
+                raise HTTPException(status_code=500, detail=str(e))
+
+        @self.app.post("/review")
+        async def review_code(request: ReviewRequest):
+            """
+            Perform comprehensive code review.
+
+            This endpoint uses the review agent to check for:
+            - Security vulnerabilities
+            - Performance issues
+            - Best practices violations
+            - Code complexity
+            - Documentation completeness
+            """
+            try:
+                review = self.review_agent.review_code(
+                    request.code,
+                    file_path=request.file_path,
+                    language=request.language
+                )
+
+                return review.to_dict()
+
+            except Exception as e:
+                logger.error(f"Review error: {e}")
+                raise HTTPException(status_code=500, detail=str(e))
 
     async def _stream_response(
         self,
