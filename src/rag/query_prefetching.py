@@ -4,7 +4,7 @@ Query prefetching - predictive pre-execution of likely next queries.
 Learns query patterns and prefetches likely next queries to reduce latency.
 
 Strategies:
-- Sequential pattern learning (A → B → C)
+- Sequential pattern learning (A -> B -> C)
 - Time-based patterns (morning queries vs afternoon)
 - Context-based suggestions
 """

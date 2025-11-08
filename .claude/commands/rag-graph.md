@@ -43,7 +43,7 @@ else:
             uses = context.get("uses", [])
             related = context.get("related_entities", [])
 
-            print(f"\n📦 Entity: {entity_info.get('name', entity)}")
+            print(f"\n[PKG] Entity: {entity_info.get('name', entity)}")
             print(f"   Type: {entity_info.get('type', 'unknown')}")
             print(f"   File: {entity_info.get('file_path', 'unknown')}")
 
@@ -79,7 +79,7 @@ else:
 
             # Related entities
             if related:
-                print(f"🔗 RELATED ENTITIES ({len(related)}):")
+                print(f"[LINK] RELATED ENTITIES ({len(related)}):")
                 for rel_entity in related[:5]:
                     name = rel_entity.get('name', '')
                     rel_type = rel_entity.get('type', '')
@@ -89,14 +89,14 @@ else:
                     print(f"   ... and {len(related) - 5} more")
 
         elif response.status_code == 404:
-            print(f"❌ Entity not found: {entity}")
-            print("\n💡 Make sure the knowledge graph is built.")
+            print(f"[X] Entity not found: {entity}")
+            print("\n[i] Make sure the knowledge graph is built.")
             print("   Re-index with: /rag-index")
         else:
-            print(f"❌ Server error: {response.status_code}")
+            print(f"[X] Server error: {response.status_code}")
 
     except Exception as e:
-        print(f"❌ Error: {e}")
+        print(f"[X] Error: {e}")
         print("Make sure the MCP server is running on port 8000.")
 ```
 

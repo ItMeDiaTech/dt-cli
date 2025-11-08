@@ -2,22 +2,22 @@
 
 ## Top 10 Priority Improvements (All Free)
 
-### 🔥 Critical (Do First)
+### [FIRE] Critical (Do First)
 
 1. **Incremental Indexing** - 90% faster re-indexing
    - Track file modification times
    - Only process changed files
-   - **Impact**: 5-10 min → 30 sec for updates
+   - **Impact**: 5-10 min -> 30 sec for updates
 
 2. **Query Caching** - 10x faster repeat queries
    - Cache query results with TTL
    - Cache embeddings
-   - **Impact**: 100ms → 10ms for common queries
+   - **Impact**: 100ms -> 10ms for common queries
 
 3. **Parallel Agent Execution** - 2x faster MAF
    - Fix LangGraph workflow
    - Run Code Analyzer + Doc Retriever simultaneously
-   - **Impact**: 400ms → 200ms per orchestration
+   - **Impact**: 400ms -> 200ms per orchestration
 
 4. **Input Validation** - Prevent crashes
    - Validate all tool parameters
@@ -29,7 +29,7 @@
    - Lazy model loading with auto-unload
    - **Impact**: Stable long-running operation
 
-### 💎 High Value (Do Next)
+### [GEM] High Value (Do Next)
 
 6. **Git Integration** - Smart indexing
    - Use `git diff` to find changed files
@@ -61,14 +61,14 @@
 ## Quick Wins (< 2 hours each)
 
 ### 30 Minutes
-- ✅ Enable ChromaDB compression: `compress_vectors=True`
-- ✅ Add query logging with timing
-- ✅ Optimize batch size based on RAM
+- [OK] Enable ChromaDB compression: `compress_vectors=True`
+- [OK] Add query logging with timing
+- [OK] Optimize batch size based on RAM
 
 ### 1 Hour
-- ✅ Add file type shortcuts (py, js, docs)
-- ✅ Popular query suggestions
-- ✅ Better error messages
+- [OK] Add file type shortcuts (py, js, docs)
+- [OK] Popular query suggestions
+- [OK] Better error messages
 
 ---
 
@@ -125,7 +125,7 @@ All improvements use free/open-source:
 - **prometheus-client** - Metrics (optional)
 - **Ollama** - Local LLM (optional)
 
-Total cost: **$0** ✅
+Total cost: **$0** [OK]
 
 ---
 
@@ -138,13 +138,13 @@ Total cost: **$0** ✅
 - **Total**: ~80 hours for major improvements
 
 ### Expected Benefits
-- ⚡ **10x faster** query performance
-- 🚀 **96x faster** re-indexing
-- 💪 **Production-ready** reliability
-- 🎯 **30% better** result relevance
-- 💾 **3x less** memory usage
-- 🔒 **Zero** security vulnerabilities
-- 📊 **Complete** observability
+- [!] **10x faster** query performance
+- [*] **96x faster** re-indexing
+- [STRONG] **Production-ready** reliability
+- [>] **30% better** result relevance
+- [@] **3x less** memory usage
+- [LOCK] **Zero** security vulnerabilities
+- [=] **Complete** observability
 
 ---
 
@@ -187,7 +187,7 @@ results = engine.query("authentication")  # ~100ms
 # Repeat query (fast!)
 results = engine.query("authentication")  # ~10ms
 
-print("Caching working! ✅")
+print("Caching working! [OK]")
 ```
 
 ---
@@ -204,9 +204,9 @@ print("Caching working! ✅")
 
 ## Questions?
 
-- 📖 Full details: `IMPROVEMENTS.md`
-- 🏗️ Architecture: `ARCHITECTURE.md`
-- 🚀 Quick start: `QUICKSTART.md`
-- 📝 Issues: GitHub Issues
+- [BOOK] Full details: `IMPROVEMENTS.md`
+- [BUILD] Architecture: `ARCHITECTURE.md`
+- [*] Quick start: `QUICKSTART.md`
+- [NOTE] Issues: GitHub Issues
 
-**All improvements maintain 100% free/open-source ✅**
+**All improvements maintain 100% free/open-source [OK]**

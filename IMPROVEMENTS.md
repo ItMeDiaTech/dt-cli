@@ -4,8 +4,8 @@
 
 The dt-cli RAG-MAF plugin is a well-architected foundation with **1,865 lines of code** implementing a complete local RAG system with multi-agent orchestration. This document outlines **50+ improvements** across performance, features, and reliability - all maintainable within the free/open-source philosophy.
 
-**Current State**: ✅ Functional MVP, excellent documentation, clear architecture
-**Target State**: 🎯 Production-ready, scalable, feature-rich developer tool
+**Current State**: [OK] Functional MVP, excellent documentation, clear architecture
+**Target State**: [>] Production-ready, scalable, feature-rich developer tool
 
 ---
 
@@ -1594,16 +1594,16 @@ async def metrics():
 
 | Category | Priority | Effort | Impact | Free |
 |----------|----------|--------|--------|------|
-| Incremental Indexing | 🔴 High | 8h | Very High | ✅ |
-| Query Caching | 🔴 High | 4h | Very High | ✅ |
-| Parallel Agents | 🔴 High | 3h | High | ✅ |
-| Input Validation | 🔴 High | 4h | High | ✅ |
-| Git Integration | 🟡 Medium | 6h | High | ✅ |
-| Hybrid Search | 🟡 Medium | 8h | High | ✅ |
-| Reranking | 🟡 Medium | 6h | Medium | ✅ |
-| Progress Reporting | 🟡 Medium | 6h | Medium | ✅ |
-| Async/Await | 🟢 Low | 8h | Medium | ✅ |
-| Monitoring | 🟢 Low | 4h | Low | ✅ |
+| Incremental Indexing | [FAIL] High | 8h | Very High | [OK] |
+| Query Caching | [FAIL] High | 4h | Very High | [OK] |
+| Parallel Agents | [FAIL] High | 3h | High | [OK] |
+| Input Validation | [FAIL] High | 4h | High | [OK] |
+| Git Integration | [WARN] Medium | 6h | High | [OK] |
+| Hybrid Search | [WARN] Medium | 8h | High | [OK] |
+| Reranking | [WARN] Medium | 6h | Medium | [OK] |
+| Progress Reporting | [WARN] Medium | 6h | Medium | [OK] |
+| Async/Await | [PASS] Low | 8h | Medium | [OK] |
+| Monitoring | [PASS] Low | 4h | Low | [OK] |
 
 ---
 
@@ -1611,11 +1611,11 @@ async def metrics():
 
 This roadmap provides **50+ improvements** ranging from critical bug fixes to advanced features. All recommendations:
 
-✅ **Maintain free/open-source philosophy**
-✅ **Use only free frameworks and tools**
-✅ **Improve performance 5-10x**
-✅ **Add production-ready features**
-✅ **Enhance user experience**
+[OK] **Maintain free/open-source philosophy**
+[OK] **Use only free frameworks and tools**
+[OK] **Improve performance 5-10x**
+[OK] **Add production-ready features**
+[OK] **Enhance user experience**
 
 **Estimated Total Implementation Time**: ~150 hours
 **Expected Performance Improvement**: 10x faster indexing, 5x faster queries

@@ -13,31 +13,31 @@ echo ""
 PLUGIN_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
 # Check Python version
-echo "🔍 Checking Python version..."
+echo "[?] Checking Python version..."
 if ! command -v python3 &> /dev/null; then
-    echo "❌ Python 3 is not installed. Please install Python 3.8 or higher."
+    echo "[X] Python 3 is not installed. Please install Python 3.8 or higher."
     exit 1
 fi
 
 PYTHON_VERSION=$(python3 -c 'import sys; print(".".join(map(str, sys.version_info[:2])))')
-echo "✅ Found Python $PYTHON_VERSION"
+echo "[OK] Found Python $PYTHON_VERSION"
 
 # Check if Python version is >= 3.8
 if python3 -c 'import sys; exit(0 if sys.version_info >= (3, 8) else 1)'; then
-    echo "✅ Python version is compatible"
+    echo "[OK] Python version is compatible"
 else
-    echo "❌ Python 3.8 or higher is required. Found: $PYTHON_VERSION"
+    echo "[X] Python 3.8 or higher is required. Found: $PYTHON_VERSION"
     exit 1
 fi
 
 # Create virtual environment (optional but recommended)
 echo ""
-echo "🔧 Setting up Python virtual environment..."
+echo "[~] Setting up Python virtual environment..."
 if [ ! -d "$PLUGIN_DIR/venv" ]; then
     python3 -m venv "$PLUGIN_DIR/venv"
-    echo "✅ Virtual environment created"
+    echo "[OK] Virtual environment created"
 else
-    echo "✅ Virtual environment already exists"
+    echo "[OK] Virtual environment already exists"
 fi
 
 # Activate virtual environment
@@ -45,44 +45,44 @@ source "$PLUGIN_DIR/venv/bin/activate"
 
 # Upgrade pip
 echo ""
-echo "📦 Upgrading pip..."
+echo "[PKG] Upgrading pip..."
 pip install --upgrade pip > /dev/null 2>&1
 
 # Install dependencies
 echo ""
-echo "📦 Installing dependencies..."
+echo "[PKG] Installing dependencies..."
 echo "   (This may take several minutes on first install)"
 pip install -r "$PLUGIN_DIR/requirements.txt" --quiet
 
 if [ $? -eq 0 ]; then
-    echo "✅ Dependencies installed successfully"
+    echo "[OK] Dependencies installed successfully"
 else
-    echo "❌ Failed to install dependencies"
+    echo "[X] Failed to install dependencies"
     exit 1
 fi
 
 # Download embedding model
 echo ""
-echo "🤖 Downloading embedding model (all-MiniLM-L6-v2)..."
+echo "[AI] Downloading embedding model (all-MiniLM-L6-v2)..."
 python3 -c "
 from sentence_transformers import SentenceTransformer
 print('   Downloading model...')
 model = SentenceTransformer('all-MiniLM-L6-v2')
-print('   ✅ Model downloaded successfully')
+print('   [OK] Model downloaded successfully')
 "
 
 # Create necessary directories
 echo ""
-echo "📁 Creating directories..."
+echo "[FOLDER] Creating directories..."
 mkdir -p "$PLUGIN_DIR/.rag_data"
 mkdir -p "$PLUGIN_DIR/logs"
-echo "✅ Directories created"
+echo "[OK] Directories created"
 
 # Make hook executable
 echo ""
-echo "🔧 Configuring Claude Code integration..."
+echo "[~] Configuring Claude Code integration..."
 chmod +x "$PLUGIN_DIR/.claude/hooks/SessionStart.sh"
-echo "✅ Hook configured"
+echo "[OK] Hook configured"
 
 # Test MCP server
 echo ""
@@ -91,13 +91,13 @@ python3 -c "
 import sys
 sys.path.insert(0, '$PLUGIN_DIR/src')
 from mcp_server import MCPServer
-print('   ✅ MCP server module loaded successfully')
+print('   [OK] MCP server module loaded successfully')
 "
 
 # Create systemd service file (optional)
 if command -v systemctl &> /dev/null; then
     echo ""
-    echo "📝 Creating systemd service (optional)..."
+    echo "[NOTE] Creating systemd service (optional)..."
     cat > /tmp/rag-maf-mcp.service << EOF
 [Unit]
 Description=RAG-MAF MCP Server for Claude Code
@@ -124,7 +124,7 @@ fi
 
 # Create CLI wrapper
 echo ""
-echo "🔧 Creating CLI wrapper..."
+echo "[~] Creating CLI wrapper..."
 cat > "$PLUGIN_DIR/rag-maf" << 'EOF'
 #!/bin/bash
 # RAG-MAF CLI wrapper
@@ -166,28 +166,28 @@ esac
 EOF
 
 chmod +x "$PLUGIN_DIR/rag-maf"
-echo "✅ CLI wrapper created"
+echo "[OK] CLI wrapper created"
 
 # Installation complete
 echo ""
 echo "╔════════════════════════════════════════════════════════════════╗"
-echo "║   ✅ Installation Complete!                                    ║"
+echo "║   [OK] Installation Complete!                                    ║"
 echo "╚════════════════════════════════════════════════════════════════╝"
 echo ""
-echo "🎉 The RAG-MAF plugin has been successfully installed!"
+echo "[**] The RAG-MAF plugin has been successfully installed!"
 echo ""
-echo "📖 Next Steps:"
+echo "[BOOK] Next Steps:"
 echo "   1. Start a Claude Code session in your project"
 echo "   2. The plugin will auto-initialize via SessionStart hook"
 echo "   3. Use slash commands: /rag-query, /rag-index, /rag-status"
 echo ""
-echo "🔧 Manual Control:"
+echo "[~] Manual Control:"
 echo "   Start server:  ./rag-maf start"
 echo "   Stop server:   ./rag-maf stop"
 echo "   Check status:  ./rag-maf status"
 echo "   Index code:    ./rag-maf index"
 echo ""
-echo "📚 Documentation: $PLUGIN_DIR/README.md"
+echo "[#] Documentation: $PLUGIN_DIR/README.md"
 echo ""
-echo "Happy coding with RAG-powered context awareness! 🚀"
+echo "Happy coding with RAG-powered context awareness! [*]"
 echo ""

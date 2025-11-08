@@ -38,7 +38,7 @@ else:
         parts = [p.strip() for p in args.split('|')]
 
         if len(parts) < 2:
-            print("❌ Error: Need at least name and query")
+            print("[X] Error: Need at least name and query")
             print("Format: <name> | <query> | [description] | [tags]")
         else:
             name = parts[0]
@@ -64,20 +64,20 @@ else:
                 result = response.json()
                 search = result.get("search", {})
 
-                print(f"✅ Saved search '{name}'")
+                print(f"[OK] Saved search '{name}'")
                 print(f"   Query: {query}")
                 if description:
                     print(f"   Description: {description}")
                 if tags:
                     print(f"   Tags: {', '.join(tags)}")
 
-                print(f"\n💡 Execute with: /rag-exec {search.get('id', '')}")
+                print(f"\n[i] Execute with: /rag-exec {search.get('id', '')}")
 
             else:
-                print(f"❌ Server error: {response.status_code}")
+                print(f"[X] Server error: {response.status_code}")
 
     except Exception as e:
-        print(f"❌ Error: {e}")
+        print(f"[X] Error: {e}")
         print("Make sure the MCP server is running on port 8000.")
 ```
 

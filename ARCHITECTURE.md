@@ -102,11 +102,11 @@ The RAG-MAF plugin is a sophisticated system that combines Retrieval-Augmented G
 - **Technology**: LangGraph
 - **Workflow**:
   ```
-  Start → Code Analyzer → Documentation Retriever
+  Start -> Code Analyzer -> Documentation Retriever
                             ↓
                         Synthesizer
                             ↓
-                    Suggestion Generator → End
+                    Suggestion Generator -> End
   ```
 
 #### Agents

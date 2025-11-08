@@ -37,9 +37,9 @@ class HybridSearchEngine:
         Tokenizes text in a way that's suitable for code:
         - Splits on whitespace and special chars
         - Preserves original tokens (e.g., 'my_function' stays as one token)
-        - Also splits snake_case: my_function → [my, function, my_function]
-        - Also splits camelCase: getUserId → [get, user, id, getUserId]
-        - Splits on dots: some.method → [some, method, some.method]
+        - Also splits snake_case: my_function -> [my, function, my_function]
+        - Also splits camelCase: getUserId -> [get, user, id, getUserId]
+        - Splits on dots: some.method -> [some, method, some.method]
 
         Args:
             text: Text to tokenize

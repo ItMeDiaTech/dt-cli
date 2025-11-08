@@ -60,7 +60,7 @@ pip install -r requirements.txt
 
 3. **Verify installation**:
 ```bash
-python3 -c "import httpx, chromadb, sentence_transformers, fastapi; print('✅ All dependencies installed')"
+python3 -c "import httpx, chromadb, sentence_transformers, fastapi; print('[OK] All dependencies installed')"
 ```
 
 4. **Start using**:

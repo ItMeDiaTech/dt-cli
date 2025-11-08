@@ -44,7 +44,7 @@ else:
             if result.get("success"):
                 results_list = result.get("results", [])
 
-                print(f"\n🔍 Found {len(results_list)} relevant results:\n")
+                print(f"\n[?] Found {len(results_list)} relevant results:\n")
 
                 for i, item in enumerate(results_list[:5], 1):
                     metadata = item.get("metadata", {})

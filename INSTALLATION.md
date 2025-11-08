@@ -118,16 +118,16 @@ for pkg in packages:
         missing.append(pkg)
 
 if missing:
-    print('❌ Missing packages:', ', '.join(missing))
+    print('[X] Missing packages:', ', '.join(missing))
     sys.exit(1)
 else:
-    print('✅ All required packages installed successfully!')
+    print('[OK] All required packages installed successfully!')
 "
 ```
 
 Expected output:
 ```
-✅ All required packages installed successfully!
+[OK] All required packages installed successfully!
 ```
 
 ### Step 4: Configure Claude Code
@@ -191,7 +191,7 @@ INFO:     Uvicorn running on http://127.0.0.1:8765
    python3 -c "
    from src.rag.embeddings import EmbeddingGenerator
    gen = EmbeddingGenerator()
-   print('✅ RAG system working')
+   print('[OK] RAG system working')
    "
    ```
 
@@ -199,7 +199,7 @@ INFO:     Uvicorn running on http://127.0.0.1:8765
    ```bash
    python3 -c "
    from src.maf.orchestrator import Orchestrator
-   print('✅ MAF system working')
+   print('[OK] MAF system working')
    "
    ```
 
@@ -233,14 +233,14 @@ When you first start Claude Code in the dt-cli directory:
 ### Expected Output
 
 ```
-🚀 Initializing RAG-MAF Plugin...
-📡 Starting MCP Server...
-✅ MCP Server started successfully
-📚 First run detected. Indexing codebase...
+[*] Initializing RAG-MAF Plugin...
+[+] Starting MCP Server...
+[OK] MCP Server started successfully
+[#] First run detected. Indexing codebase...
    (This may take a few minutes)
-⏳ Indexing in progress (running in background)...
+[...] Indexing in progress (running in background)...
 
-🎉 RAG-MAF Plugin ready!
+[**] RAG-MAF Plugin ready!
 
 Available commands:
   /rag-query <query>  - Query the RAG system

@@ -52,8 +52,8 @@ else:
             results_list = result.get("results", [])
             metadata = result.get("metadata", {})
 
-            print(f"\n🔍 Query: {query}")
-            print(f"📊 Results: {len(results_list)} found")
+            print(f"\n[?] Query: {query}")
+            print(f"[=] Results: {len(results_list)} found")
             print()
 
             # Display results
@@ -84,7 +84,7 @@ else:
                     suggestions = sugg_data.get("suggestions", [])
 
                     if suggestions and len(suggestions) > 1:
-                        print("\n💡 Related queries you might try:")
+                        print("\n[i] Related queries you might try:")
                         for sugg in suggestions[:3]:
                             if sugg != query:
                                 print(f"   - {sugg}")
@@ -92,15 +92,15 @@ else:
                 pass
 
             # Offer to save search
-            print("\n💾 Save this search? Use: /rag-save '{query}'")
+            print("\n[@] Save this search? Use: /rag-save '{query}'")
 
         else:
-            print(f"❌ Server error: {response.status_code}")
+            print(f"[X] Server error: {response.status_code}")
 
     except httpx.TimeoutException:
-        print("⏱️  Query timed out. Try a simpler query or check server status.")
+        print("[TIMER]  Query timed out. Try a simpler query or check server status.")
     except Exception as e:
-        print(f"❌ Error: {e}")
+        print(f"[X] Error: {e}")
         print("Make sure the MCP server is running on port 8000.")
 ```
 

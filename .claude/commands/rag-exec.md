@@ -59,7 +59,7 @@ else:
             search_info = result.get("search", {})
             results = result.get("results", [])
 
-            print(f"🔍 Executing: {search_info.get('name', '')}")
+            print(f"[?] Executing: {search_info.get('name', '')}")
             print(f"   Query: {search_info.get('query', '')}")
             print(f"   Results: {len(results)}")
             print()
@@ -79,13 +79,13 @@ else:
                 print()
 
         elif exec_response.status_code == 404:
-            print(f"❌ Search not found: {search_ref}")
+            print(f"[X] Search not found: {search_ref}")
             print("List available searches with: /rag-searches")
         else:
-            print(f"❌ Server error: {exec_response.status_code}")
+            print(f"[X] Server error: {exec_response.status_code}")
 
     except Exception as e:
-        print(f"❌ Error: {e}")
+        print(f"[X] Error: {e}")
         print("Make sure the MCP server is running on port 8000.")
 ```
 

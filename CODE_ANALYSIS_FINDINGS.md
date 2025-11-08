@@ -20,7 +20,7 @@ This comprehensive analysis examined the entire dt-cli codebase across all phase
 | **MEDIUM** | 53 | 39.0% |
 | **LOW** | 30 | 22.0% |
 
-### Production Readiness: ⚠️ **NOT READY**
+### Production Readiness: [!] **NOT READY**
 
 **Blocking Issues for Production:**
 - ✗ Critical security vulnerability in plugin system (arbitrary code execution)
@@ -53,7 +53,7 @@ This comprehensive analysis examined the entire dt-cli codebase across all phase
 
 ## Critical Issues
 
-### 🔴 CRITICAL-1: Arbitrary Code Execution in Plugin System
+### [FAIL] CRITICAL-1: Arbitrary Code Execution in Plugin System
 
 **File**: `src/plugins/plugin_system.py:388-434`
 **Severity**: CRITICAL (CVSS 9.8)
@@ -67,7 +67,7 @@ The plugin system loads and executes arbitrary Python code from plugin files wit
 def load_plugin_from_file(self, plugin_file: Path) -> bool:
     spec = importlib.util.spec_from_file_location("plugin", plugin_file)
     module = importlib.util.module_from_spec(spec)
-    spec.loader.exec_module(module)  # ⚠️ EXECUTES UNTRUSTED CODE
+    spec.loader.exec_module(module)  # [!] EXECUTES UNTRUSTED CODE
 ```
 
 **Attack Scenario**:
@@ -115,7 +115,7 @@ def load_plugin_from_file(self, plugin_file: Path) -> bool:
 
 ---
 
-### 🔴 CRITICAL-2: Broken Access Control in Workspace Collaboration
+### [FAIL] CRITICAL-2: Broken Access Control in Workspace Collaboration
 
 **File**: `src/workspace/collaboration.py:464`
 **Severity**: CRITICAL
@@ -131,7 +131,7 @@ def get_shared_searches(self, workspace_id, user_id, tags=None):
     for search in workspace.shared_searches.values():
         # BUG: Empty list evaluates to False, so "not []" = True
         if not search.shared_with or user_id in search.shared_with:
-            searches.append(search)  # ⚠️ EVERYONE GETS ACCESS
+            searches.append(search)  # [!] EVERYONE GETS ACCESS
 ```
 
 **Attack Scenario**:
@@ -168,7 +168,7 @@ def get_shared_searches(self, workspace_id, user_id, tags=None):
 
 ---
 
-### 🔴 CRITICAL-3: Data Loss on Failed Import
+### [FAIL] CRITICAL-3: Data Loss on Failed Import
 
 **File**: `src/data/export_import.py:324-329`
 **Severity**: CRITICAL
@@ -183,7 +183,7 @@ def _import_index(self, import_dir: Path):
     target_db_path = Path.cwd() / 'chroma_db'
 
     if target_db_path.exists():
-        shutil.rmtree(target_db_path)  # ⚠️ DATA DELETED!
+        shutil.rmtree(target_db_path)  # [!] DATA DELETED!
 
     shutil.copytree(index_import_dir, target_db_path)  # If this fails...
     # Original data is GONE!
@@ -229,7 +229,7 @@ def _import_index(self, import_dir: Path):
 
 ---
 
-### 🔴 CRITICAL-4: Path Traversal Vulnerability in Archive Extraction
+### [FAIL] CRITICAL-4: Path Traversal Vulnerability in Archive Extraction
 
 **File**: `src/data/export_import.py:220-221`
 **Severity**: CRITICAL (CVSS 8.6)
@@ -241,7 +241,7 @@ Archive contents are extracted without validating paths. A malicious archive cou
 **Vulnerable Code**:
 ```python
 with tarfile.open(archive_path, 'r:gz') as tar:
-    tar.extractall(temp_dir)  # ⚠️ NO PATH VALIDATION
+    tar.extractall(temp_dir)  # [!] NO PATH VALIDATION
 ```
 
 **Attack Scenario**:
@@ -280,7 +280,7 @@ def _safe_extract(self, archive_path: Path, dest_dir: Path):
 
 ---
 
-### 🔴 CRITICAL-5: Credentials Exported Unencrypted
+### [FAIL] CRITICAL-5: Credentials Exported Unencrypted
 
 **File**: `src/data/export_import.py:141-147`
 **Severity**: CRITICAL
@@ -293,7 +293,7 @@ Sensitive credentials are exported to backup archives without encryption. Backup
 ```python
 def _export_configuration(self, export_dir: Path):
     # Copies entire config directory including .credentials.json
-    shutil.copytree(config_dir, config_export_dir)  # ⚠️ PLAINTEXT SECRETS
+    shutil.copytree(config_dir, config_export_dir)  # [!] PLAINTEXT SECRETS
 ```
 
 **Impact**:
@@ -321,7 +321,7 @@ def _export_configuration(self, export_dir: Path):
 
 ---
 
-### 🔴 CRITICAL-6: Hybrid Search Produces Negative Scores
+### [FAIL] CRITICAL-6: Hybrid Search Produces Negative Scores
 
 **File**: `src/rag/hybrid_search.py:121`
 **Severity**: CRITICAL
@@ -334,14 +334,14 @@ The distance-to-similarity conversion uses `1 - distance`, which produces negati
 ```python
 # Normalize scores for semantic results (distances -> similarities)
 semantic_scores = self._normalize_scores(
-    [1 - r.get('distance', 0) for r in semantic_results]  # ⚠️ Can be negative!
+    [1 - r.get('distance', 0) for r in semantic_results]  # [!] Can be negative!
 )
 ```
 
 **Example**:
 ```python
 # If ChromaDB returns distance = 1.5 (cosine distance):
-similarity = 1 - 1.5 = -0.5  # ⚠️ NEGATIVE!
+similarity = 1 - 1.5 = -0.5  # [!] NEGATIVE!
 
 # After normalization with negative values:
 # Results are incorrectly ranked
@@ -373,7 +373,7 @@ semantic_scores = self._normalize_scores(
 
 ---
 
-### 🔴 CRITICAL-7: Query Expansion Completely Non-Functional
+### [FAIL] CRITICAL-7: Query Expansion Completely Non-Functional
 
 **File**: `src/rag/enhanced_query_engine.py:250-252`
 **Severity**: CRITICAL
@@ -392,9 +392,9 @@ else:
 
 # Perform search
 if use_hybrid and self.hybrid_search.is_available():
-    results = self._hybrid_query(expanded_queries[0], ...)  # ⚠️ ONLY FIRST!
+    results = self._hybrid_query(expanded_queries[0], ...)  # [!] ONLY FIRST!
 else:
-    results = self._semantic_query(expanded_queries[0], ...)  # ⚠️ ONLY FIRST!
+    results = self._semantic_query(expanded_queries[0], ...)  # [!] ONLY FIRST!
 ```
 
 **Impact**:
@@ -425,7 +425,7 @@ results = self._merge_results(all_results, n_results)
 
 ---
 
-### 🔴 CRITICAL-8: Real-time Watcher Triggers Full Re-indexing
+### [FAIL] CRITICAL-8: Real-time Watcher Triggers Full Re-indexing
 
 **File**: `src/indexing/realtime_watcher.py:268-271`
 **Severity**: CRITICAL
@@ -442,7 +442,7 @@ def _on_changes_detected(self, changed_files: Set[str]):
     # Trigger incremental indexing
     result = self.query_engine.index_codebase(
         incremental=True,
-        use_git=False  # ⚠️ Missing changed_files parameter!
+        use_git=False  # [!] Missing changed_files parameter!
     )
 ```
 
@@ -461,13 +461,13 @@ def _on_changes_detected(self, changed_files: Set[str]):
     result = self.query_engine.index_codebase(
         incremental=True,
         use_git=False,
-        changed_files=list(changed_files)  # ✅ Pass changed files
+        changed_files=list(changed_files)  # [OK] Pass changed files
     )
 ```
 
 ---
 
-### 🔴 CRITICAL-9: Division by Zero in Embeddings Similarity
+### [FAIL] CRITICAL-9: Division by Zero in Embeddings Similarity
 
 **File**: `src/rag/embeddings.py:85-87`
 **Severity**: CRITICAL
@@ -481,7 +481,7 @@ The cosine similarity calculation doesn't check for zero-magnitude vectors, caus
 def similarity(self, vec1, vec2):
     dot_product = np.dot(vec1, vec2)
     magnitude = np.linalg.norm(vec1) * np.linalg.norm(vec2)
-    return dot_product / magnitude  # ⚠️ Division by zero!
+    return dot_product / magnitude  # [!] Division by zero!
 ```
 
 **Impact**:
@@ -502,7 +502,7 @@ def similarity(self, vec1, vec2):
 
 ---
 
-### 🔴 CRITICAL-10: Multi-Repository Parallel Indexing Broken
+### [FAIL] CRITICAL-10: Multi-Repository Parallel Indexing Broken
 
 **File**: `src/repositories/multi_repo_manager.py:288-294`
 **Severity**: CRITICAL
@@ -519,7 +519,7 @@ def _index_parallel(self, query_engine, repositories, incremental):
         # query engine instances for true parallelism
         logger.info(f"Indexing repository: {repo.name}")
 
-        # ⚠️ MISSING: query_engine.config['codebase_path'] = repo.path
+        # [!] MISSING: query_engine.config['codebase_path'] = repo.path
         stats = query_engine.index_codebase(incremental=incremental)
 ```
 
@@ -528,7 +528,7 @@ def _index_parallel(self, query_engine, repositories, incremental):
 def _index_sequential(self, query_engine, repositories, incremental):
     original_path = query_engine.config.get('codebase_path')
     for repo in repositories:
-        query_engine.config['codebase_path'] = repo.path  # ✅ Sets path
+        query_engine.config['codebase_path'] = repo.path  # [OK] Sets path
         stats = query_engine.index_codebase(...)
 ```
 
@@ -552,7 +552,7 @@ def index_repo(repo: Repository):
 
 ---
 
-### 🔴 CRITICAL-11: Non-Atomic JSON Writes Risk Data Loss
+### [FAIL] CRITICAL-11: Non-Atomic JSON Writes Risk Data Loss
 
 **Files**:
 - `src/rag/incremental_indexing.py:52`
@@ -567,7 +567,7 @@ JSON files are written directly without atomic operations. If the application cr
 **Vulnerable Code**:
 ```python
 def save_status(self, file_path: Path):
-    file_path.write_text(json.dumps(self.status, indent=2))  # ⚠️ Not atomic!
+    file_path.write_text(json.dumps(self.status, indent=2))  # [!] Not atomic!
 ```
 
 **Impact**:
@@ -602,7 +602,7 @@ def save_status(self, file_path: Path):
 
 ---
 
-### 🔴 CRITICAL-12: Configuration File Permission Race Condition
+### [FAIL] CRITICAL-12: Configuration File Permission Race Condition
 
 **File**: `src/config/config_manager.py:380-383`
 **Severity**: CRITICAL
@@ -614,7 +614,7 @@ Credentials file is written with default permissions, then chmod is applied. A w
 **Vulnerable Code**:
 ```python
 # Write file
-credentials_path.write_text(json.dumps(credentials, indent=2))  # ⚠️ Default perms!
+credentials_path.write_text(json.dumps(credentials, indent=2))  # [!] Default perms!
 # Then restrict permissions
 os.chmod(self.credentials_path, 0o600)  # Race condition window
 ```
@@ -638,7 +638,7 @@ with os.fdopen(fd, 'w') as f:
 
 ---
 
-### 🔴 CRITICAL-13: Thread Safety Violations in Multi-Repo Manager
+### [FAIL] CRITICAL-13: Thread Safety Violations in Multi-Repo Manager
 
 **File**: `src/repositories/multi_repo_manager.py:267-317`
 **Severity**: CRITICAL
@@ -653,7 +653,7 @@ def _index_parallel(self, query_engine, repositories, incremental):
     with ThreadPoolExecutor(max_workers=self.max_parallel_repos) as executor:
         futures = []
         for repo in enabled_repos:
-            future = executor.submit(index_repo, repo)  # ⚠️ Shared query_engine
+            future = executor.submit(index_repo, repo)  # [!] Shared query_engine
 ```
 
 **Impact**:
@@ -678,7 +678,7 @@ def index_repo(repo: Repository):
 
 ---
 
-### 🔴 CRITICAL-14: Activity Log Not Persisted
+### [FAIL] CRITICAL-14: Activity Log Not Persisted
 
 **File**: `src/workspace/collaboration.py:141-142`
 **Severity**: CRITICAL
@@ -690,12 +690,12 @@ Workspace activity logs are stored in memory only and never saved to disk. All a
 **Vulnerable Code**:
 ```python
 def __init__(self, storage_path: Optional[Path] = None):
-    self.activity_log: List[ActivityEntry] = []  # ⚠️ Memory only!
+    self.activity_log: List[ActivityEntry] = []  # [!] Memory only!
     # No _load_activity_log() call
 
 def _log_activity(self, ...):
     entry = ActivityEntry(...)
-    self.activity_log.append(entry)  # ⚠️ Never saved to disk
+    self.activity_log.append(entry)  # [!] Never saved to disk
 ```
 
 **Impact**:
@@ -864,7 +864,7 @@ See [Complete Issue List](#complete-issue-list-by-module) for full details on re
 
 ## Integration Issues
 
-### ⚠️ INTEGRATION-1: QueryEngine Missing `.config` Attribute
+### [!] INTEGRATION-1: QueryEngine Missing `.config` Attribute
 
 **Severity**: CRITICAL
 **Files**: `src/repositories/multi_repo_manager.py:239,357`
@@ -877,7 +877,7 @@ MultiRepositoryManager expects `query_engine.config` dictionary but QueryEngine 
 
 ---
 
-### ⚠️ INTEGRATION-2: Two Incompatible Configuration Systems
+### [!] INTEGRATION-2: Two Incompatible Configuration Systems
 
 **Severity**: CRITICAL
 **Files**: `src/config.py` vs `src/config/config_manager.py`
@@ -892,7 +892,7 @@ Modules can't interoperate.
 
 ---
 
-### ⚠️ INTEGRATION-3: QueryEngine API Mismatch
+### [!] INTEGRATION-3: QueryEngine API Mismatch
 
 **Severity**: HIGH
 
@@ -905,7 +905,7 @@ Different signatures cause runtime errors.
 
 ---
 
-### ⚠️ INTEGRATION-4: MCP Server Uses Wrong Import Paths
+### [!] INTEGRATION-4: MCP Server Uses Wrong Import Paths
 
 **Severity**: MEDIUM
 **File**: `src/mcp_server/server.py:17-18`
