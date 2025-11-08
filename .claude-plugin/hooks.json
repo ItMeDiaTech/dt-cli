@@ -1,3 +1,17 @@
 {
-  "sessionStart": "./.claude/hooks/SessionStart.sh"
+  "hooks": {
+    "SessionStart": [
+      {
+        "matcher": "startup|resume|clear|compact",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "./.claude/hooks/SessionStart.sh",
+            "timeout": 60,
+            "description": "Initialize RAG-MAF systems on session start"
+          }
+        ]
+      }
+    ]
+  }
 }
