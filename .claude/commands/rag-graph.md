@@ -31,7 +31,7 @@ else:
     try:
         # Get entity context
         response = httpx.get(
-            f"http://127.0.0.1:8000/knowledge-graph/entity/{entity}",
+            f"http://127.0.0.1:8765/knowledge-graph/entity/{entity}",
             timeout=10.0
         )
 

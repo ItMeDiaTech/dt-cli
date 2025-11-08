@@ -37,7 +37,7 @@ else:
     try:
         # Execute query
         response = httpx.post(
-            "http://127.0.0.1:8000/query",
+            "http://127.0.0.1:8765/query",
             json={
                 "query": query,
                 "n_results": 5,
@@ -75,7 +75,7 @@ else:
             # Get similar queries
             try:
                 sugg_response = httpx.get(
-                    f"http://127.0.0.1:8000/suggestions?partial={query[:20]}",
+                    f"http://127.0.0.1:8765/suggestions?partial={query[:20]}",
                     timeout=5.0
                 )
 

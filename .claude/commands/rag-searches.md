@@ -31,7 +31,7 @@ try:
         params['tags'] = filter_tags
 
     response = httpx.get(
-        "http://127.0.0.1:8000/searches",
+        "http://127.0.0.1:8765/searches",
         params=params,
         timeout=10.0
     )

@@ -23,7 +23,7 @@ import json
 try:
     # Get all metrics
     response = httpx.get(
-        "http://127.0.0.1:8000/metrics",
+        "http://127.0.0.1:8765/metrics",
         timeout=10.0
     )
 
@@ -90,7 +90,7 @@ try:
         # Get popular queries
         try:
             history_response = httpx.get(
-                "http://127.0.0.1:8000/query-history?days=1",
+                "http://127.0.0.1:8765/query-history?days=1",
                 timeout=5.0
             )
 

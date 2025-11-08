@@ -29,7 +29,7 @@ else:
     try:
         # First, try to find by name
         response = httpx.get(
-            "http://127.0.0.1:8000/searches",
+            "http://127.0.0.1:8765/searches",
             timeout=10.0
         )
 
@@ -50,7 +50,7 @@ else:
 
         # Execute the search
         exec_response = httpx.post(
-            f"http://127.0.0.1:8000/searches/{search_id}/execute",
+            f"http://127.0.0.1:8765/searches/{search_id}/execute",
             timeout=30.0
         )
 

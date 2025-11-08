@@ -49,7 +49,7 @@ else:
 
             # Save search
             response = httpx.post(
-                "http://127.0.0.1:8000/searches",
+                "http://127.0.0.1:8765/searches",
                 json={
                     "name": name,
                     "query": query,
