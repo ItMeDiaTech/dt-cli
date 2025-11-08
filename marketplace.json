@@ -1,15 +1,13 @@
 {
+  "$schema": "https://anthropic.com/claude-code/marketplace.schema.json",
+  "name": "ItMeDiaTech Plugin Marketplace",
+  "version": "1.0.0",
+  "description": "Official marketplace for dt-cli plugins and extensions",
   "owner": {
     "name": "ItMeDiaTech",
     "email": "",
     "url": "https://github.com/ItMeDiaTech",
     "description": "Developer tools and AI-powered development assistance"
-  },
-  "marketplace": {
-    "name": "ItMeDiaTech Plugin Marketplace",
-    "description": "Official marketplace for dt-cli plugins and extensions",
-    "version": "1.0.0",
-    "url": "https://github.com/ItMeDiaTech/dt-cli"
   },
   "plugins": [
     {
@@ -26,8 +24,10 @@
         "type": "git",
         "url": "https://github.com/ItMeDiaTech/dt-cli"
       },
-      "manifestUrl": "https://raw.githubusercontent.com/ItMeDiaTech/dt-cli/main/.claude-plugin/marketplace.json",
+      "manifestUrl": "https://raw.githubusercontent.com/ItMeDiaTech/dt-cli/main/.claude-plugin/plugin.json",
       "installUrl": "https://github.com/ItMeDiaTech/dt-cli",
+      "source": "https://github.com/ItMeDiaTech/dt-cli",
+      "category": "productivity",
       "categories": [
         "productivity",
         "ai-tools",
