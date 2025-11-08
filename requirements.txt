@@ -25,6 +25,9 @@ pyyaml>=6.0.1
 tiktoken>=0.5.2
 watchdog>=3.0.0
 
+# LLM Providers (optional - install what you need)
+# anthropic>=0.18.0  # Only needed if using Claude provider
+
 # Development
 pytest>=7.4.4
 pytest-asyncio>=0.23.3

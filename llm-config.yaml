@@ -1,0 +1,123 @@
+# dt-cli LLM Configuration
+#
+# This file configures which LLM provider to use.
+# dt-cli supports multiple open source and proprietary providers.
+#
+# Recommended for development: ollama
+# Recommended for production: vllm
+# Optional: claude (requires Anthropic subscription)
+
+# ============================================================================
+# OPTION 1: Ollama (Recommended for Development) - 100% OPEN SOURCE
+# ============================================================================
+#
+# Ollama is perfect for local development:
+# - Free and open source
+# - Runs on your machine
+# - Easy setup: https://ollama.com/download
+# - Great models: qwen3-coder, deepseek-v3, starcoder2
+#
+provider: ollama
+
+llm:
+  model_name: qwen3-coder  # Recommended: best for agentic coding workflows
+  # model_name: deepseek-v3  # Alternative: best for reasoning
+  # model_name: starcoder2   # Alternative: fast, good for completion
+
+  base_url: http://localhost:11434
+  temperature: 0.1
+  max_tokens: 4096
+  timeout: 60
+
+# ============================================================================
+# OPTION 2: vLLM (Recommended for Production) - 100% OPEN SOURCE
+# ============================================================================
+#
+# vLLM is perfect for production deployment:
+# - 3.2x higher throughput than Ollama
+# - Production-grade performance
+# - Supports multi-GPU deployment
+# - 100% open source
+#
+# To use vLLM, uncomment the section below and comment out Ollama above:
+
+# provider: vllm
+#
+# llm:
+#   model_name: qwen3-coder
+#   base_url: http://localhost:8000  # vLLM server endpoint
+#   api_key: not-needed  # vLLM doesn't require authentication by default
+#   temperature: 0.1
+#   max_tokens: 4096
+#   timeout: 120
+
+# ============================================================================
+# OPTION 3: Claude Code (Optional) - PROPRIETARY
+# ============================================================================
+#
+# Claude is OPTIONAL and only for users who:
+# - Already have an Anthropic subscription
+# - Prefer Claude for certain tasks
+# - Want a hybrid setup
+#
+# NOTE: dt-cli works best with open source providers.
+#
+# To use Claude, uncomment the section below and add your API key:
+
+# provider: claude
+#
+# llm:
+#   model_name: claude-sonnet-4.5
+#   api_key: <your-anthropic-api-key>  # Get from https://console.anthropic.com/
+#   temperature: 0.1
+#   max_tokens: 4096
+#   timeout: 60
+
+# ============================================================================
+# RAG Configuration (same for all providers)
+# ============================================================================
+
+rag:
+  chunk_size: 1000
+  chunk_overlap: 200
+  max_results: 5
+  embedding_model: sentence-transformers/all-MiniLM-L6-v2
+  # embedding_model: BAAI/bge-base-en-v1.5  # Recommended upgrade
+
+# ============================================================================
+# MAF (Multi-Agent Framework) Configuration
+# ============================================================================
+
+maf:
+  enabled: true
+  max_iterations: 10
+  timeout: 300
+
+# ============================================================================
+# Auto-triggering Configuration
+# ============================================================================
+
+auto_trigger:
+  enabled: true  # Automatically trigger RAG for exploratory queries
+  threshold: 0.7  # Confidence threshold for triggering
+  show_activity: true  # Show when RAG is working
+
+# ============================================================================
+# Quick Setup Guide
+# ============================================================================
+#
+# For Ollama (easiest):
+#   1. Install Ollama: https://ollama.com/download
+#   2. Pull a model: ollama pull qwen3-coder
+#   3. Start Ollama: ollama serve
+#   4. Use config above (already configured!)
+#
+# For vLLM (production):
+#   1. Install vLLM: pip install vllm
+#   2. Start server: vllm serve qwen3-coder --port 8000
+#   3. Update config above to use 'vllm' provider
+#
+# For Claude (optional):
+#   1. Get API key from https://console.anthropic.com/
+#   2. Update config above with your API key
+#   3. Change provider to 'claude'
