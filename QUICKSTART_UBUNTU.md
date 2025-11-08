@@ -3,8 +3,10 @@
 ## One-Command Installation
 
 ```bash
-git clone <repository-url> dt-cli && cd dt-cli && chmod +x ubuntu-install.sh && ./ubuntu-install.sh
+git clone https://github.com/ItMeDiaTech/dt-cli.git && cd dt-cli && chmod +x ubuntu-install.sh && ./ubuntu-install.sh
 ```
+
+**Note:** During installation, choose "yes" when asked to add dt-cli to PATH. This enables the `rag-plugin-global` command!
 
 ## What Gets Installed
 

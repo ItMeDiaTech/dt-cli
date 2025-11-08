@@ -1,0 +1,133 @@
+#!/bin/bash
+# Global RAG Plugin Installer for Claude Projects
+# This script makes it easy to add the RAG plugin to any project
+
+DT_CLI_DIR="$HOME/dt-cli"
+
+# Colors
+GREEN='\033[0;32m'
+BLUE='\033[0;34m'
+YELLOW='\033[1;33m'
+NC='\033[0m'
+
+# Function to setup plugin in a directory
+setup_plugin() {
+    local TARGET_DIR="$1"
+
+    if [ -z "$TARGET_DIR" ]; then
+        TARGET_DIR="."
+    fi
+
+    cd "$TARGET_DIR" || exit 1
+
+    echo -e "${BLUE}Setting up RAG plugin in: $(pwd)${NC}"
+
+    # Check if .claude exists
+    if [ -d ".claude" ]; then
+        echo -e "${YELLOW}⚠️  .claude directory exists. Merging...${NC}"
+
+        # Backup existing
+        if [ ! -d ".claude.backup" ]; then
+            cp -r .claude .claude.backup
+            echo "   Backup created: .claude.backup"
+        fi
+
+        # Merge commands
+        mkdir -p .claude/commands
+        cp -n "$DT_CLI_DIR/.claude/commands/"* .claude/commands/ 2>/dev/null || true
+
+        # Merge hooks
+        mkdir -p .claude/hooks
+        cp -n "$DT_CLI_DIR/.claude/hooks/"* .claude/hooks/ 2>/dev/null || true
+
+        # Copy configs (overwrite)
+        cp "$DT_CLI_DIR/.claude/mcp-servers.json" .claude/
+        cp "$DT_CLI_DIR/.claude/rag-config.json" .claude/
+    else
+        echo "   Creating .claude directory..."
+        cp -r "$DT_CLI_DIR/.claude" .
+    fi
+
+    # Make hooks executable
+    chmod +x .claude/hooks/*.sh 2>/dev/null || true
+
+    echo -e "${GREEN}✅ RAG plugin installed!${NC}"
+    echo ""
+    echo "Next steps:"
+    echo "  1. Start MCP server: $DT_CLI_DIR/rag-maf start"
+    echo "  2. Index this project: $DT_CLI_DIR/rag-maf index"
+    echo "  3. Start Claude: claude"
+    echo "  4. Try: /rag-status"
+}
+
+# Function to remove plugin
+remove_plugin() {
+    local TARGET_DIR="$1"
+
+    if [ -z "$TARGET_DIR" ]; then
+        TARGET_DIR="."
+    fi
+
+    cd "$TARGET_DIR" || exit 1
+
+    echo -e "${YELLOW}Removing RAG plugin from: $(pwd)${NC}"
+
+    if [ -d ".claude" ]; then
+        # Remove RAG-specific files
+        rm -f .claude/commands/rag-*.md
+        rm -f .claude/mcp-servers.json
+        rm -f .claude/rag-config.json
+        rm -f .claude/hooks/SessionStart.sh
+
+        # If .claude is now empty, remove it
+        if [ -z "$(ls -A .claude)" ]; then
+            rmdir .claude
+            echo "   Removed empty .claude directory"
+        fi
+
+        echo -e "${GREEN}✅ RAG plugin removed${NC}"
+    else
+        echo "   No .claude directory found"
+    fi
+}
+
+# Main script
+case "$1" in
+    install|setup|add)
+        setup_plugin "$2"
+        ;;
+    remove|uninstall)
+        remove_plugin "$2"
+        ;;
+    update)
+        echo "Updating RAG plugin..."
+        cd "$DT_CLI_DIR" || exit 1
+        git pull
+        ./install.sh
+        echo -e "${GREEN}✅ Plugin updated!${NC}"
+        echo "   Restart MCP server: $DT_CLI_DIR/rag-maf restart"
+        ;;
+    *)
+        echo "RAG Plugin Global Manager"
+        echo ""
+        echo "Usage: $0 <command> [directory]"
+        echo ""
+        echo "Commands:"
+        echo "  install [dir]   - Install RAG plugin in directory (default: current)"
+        echo "  remove [dir]    - Remove RAG plugin from directory"
+        echo "  update          - Update dt-cli and reinstall"
+        echo ""
+        echo "Examples:"
+        echo "  $0 install                    # Install in current directory"
+        echo "  $0 install /path/to/project   # Install in specific project"
+        echo "  $0 remove                     # Remove from current directory"
+        echo "  $0 update                     # Update dt-cli plugin"
+        echo ""
+        echo "After installation:"
+        echo "  Start server:   $DT_CLI_DIR/rag-maf start"
+        echo "  Index project:  $DT_CLI_DIR/rag-maf index"
+        echo "  Start Claude:   claude"
+        echo ""
+        exit 1
+        ;;
+esac

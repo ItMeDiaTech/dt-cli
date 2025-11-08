@@ -125,45 +125,120 @@ fi
 # Create CLI wrapper
 echo ""
 echo "🔧 Creating CLI wrapper..."
-cat > "$PLUGIN_DIR/rag-maf" << 'EOF'
+cat > "$PLUGIN_DIR/rag-maf" << 'EOFWRAPPER'
 #!/bin/bash
 # RAG-MAF CLI wrapper
 
 PLUGIN_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+
+# Check if virtual environment exists
+if [ ! -d "$PLUGIN_DIR/venv" ]; then
+    echo "Error: Virtual environment not found at $PLUGIN_DIR/venv"
+    echo "Please run ./install.sh first"
+    exit 1
+fi
+
+# Activate virtual environment
 source "$PLUGIN_DIR/venv/bin/activate"
 
 case "$1" in
     start)
         echo "Starting MCP server..."
-        python3 -m src.mcp_server.server
+        cd "$PLUGIN_DIR"
+        # Use direct execution to avoid module import warning
+        PYTHONPATH="$PLUGIN_DIR/src" python3 "$PLUGIN_DIR/src/mcp_server/server.py" &
+        SERVER_PID=$!
+        echo $SERVER_PID > "$PLUGIN_DIR/.mcp_server.pid"
+        echo "MCP server started (PID: $SERVER_PID)"
+        echo "Server running on http://127.0.0.1:8765"
         ;;
     stop)
         echo "Stopping MCP server..."
-        pkill -f "mcp_server/server.py"
+        if [ -f "$PLUGIN_DIR/.mcp_server.pid" ]; then
+            PID=$(cat "$PLUGIN_DIR/.mcp_server.pid")
+            kill $PID 2>/dev/null && echo "MCP server stopped (PID: $PID)" || echo "Process not found"
+            rm "$PLUGIN_DIR/.mcp_server.pid"
+        else
+            # Fallback: kill by process name
+            pkill -f "mcp_server/server.py" && echo "MCP server stopped" || echo "MCP server not running"
+        fi
         ;;
     status)
-        if pgrep -f "mcp_server/server.py" > /dev/null; then
-            echo "MCP server is running"
+        if [ -f "$PLUGIN_DIR/.mcp_server.pid" ]; then
+            PID=$(cat "$PLUGIN_DIR/.mcp_server.pid")
+            if ps -p $PID > /dev/null 2>&1; then
+                echo "MCP server is running (PID: $PID)"
+                echo "Server URL: http://127.0.0.1:8765"
+                exit 0
+            else
+                echo "MCP server is not running (stale PID file)"
+                rm "$PLUGIN_DIR/.mcp_server.pid"
+                exit 1
+            fi
         else
-            echo "MCP server is not running"
+            if pgrep -f "mcp_server/server.py" > /dev/null; then
+                echo "MCP server is running (no PID file)"
+                exit 0
+            else
+                echo "MCP server is not running"
+                exit 1
+            fi
         fi
         ;;
     index)
         echo "Indexing codebase..."
-        python3 -c "
+        cd "$PLUGIN_DIR"
+        PYTHONPATH="$PLUGIN_DIR/src" python3 -c "
 import sys
-sys.path.insert(0, '$PLUGIN_DIR/src')
 from rag import QueryEngine
 engine = QueryEngine()
 engine.index_codebase('.')
+print('Indexing complete!')
 "
         ;;
+    test)
+        echo "Testing RAG system..."
+        cd "$PLUGIN_DIR"
+        PYTHONPATH="$PLUGIN_DIR/src" python3 -c "
+import sys
+from rag import QueryEngine
+engine = QueryEngine()
+print('RAG system initialized successfully!')
+print(f'Vector store location: {engine.vector_store.persist_directory}')
+"
+        ;;
+    logs)
+        echo "Showing MCP server logs..."
+        if [ -f "$PLUGIN_DIR/logs/mcp_server.log" ]; then
+            tail -f "$PLUGIN_DIR/logs/mcp_server.log"
+        else
+            echo "No log file found at $PLUGIN_DIR/logs/mcp_server.log"
+        fi
+        ;;
+    restart)
+        echo "Restarting MCP server..."
+        $0 stop
+        sleep 2
+        $0 start
+        ;;
     *)
-        echo "Usage: $0 {start|stop|status|index}"
+        echo "RAG-MAF Plugin Control Script"
+        echo ""
+        echo "Usage: $0 {start|stop|status|restart|index|test|logs}"
+        echo ""
+        echo "Commands:"
+        echo "  start    - Start the MCP server"
+        echo "  stop     - Stop the MCP server"
+        echo "  status   - Check if MCP server is running"
+        echo "  restart  - Restart the MCP server"
+        echo "  index    - Index the current codebase"
+        echo "  test     - Test RAG system initialization"
+        echo "  logs     - Show MCP server logs"
+        echo ""
         exit 1
         ;;
 esac
-EOF
+EOFWRAPPER
 
 chmod +x "$PLUGIN_DIR/rag-maf"
 echo "✅ CLI wrapper created"
@@ -185,7 +260,10 @@ echo "🔧 Manual Control:"
 echo "   Start server:  ./rag-maf start"
 echo "   Stop server:   ./rag-maf stop"
 echo "   Check status:  ./rag-maf status"
+echo "   Restart:       ./rag-maf restart"
 echo "   Index code:    ./rag-maf index"
+echo "   Test RAG:      ./rag-maf test"
+echo "   View logs:     ./rag-maf logs"
 echo ""
 echo "📚 Documentation: $PLUGIN_DIR/README.md"
 echo ""

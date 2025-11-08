@@ -449,9 +449,15 @@ if [[ $REPLY =~ ^[Yy]$ ]]; then
         echo "export PATH=\"\$PATH:$SCRIPT_DIR\"" >> ~/.bashrc
         print_status "Added to PATH in ~/.bashrc"
         export PATH="$PATH:$SCRIPT_DIR"
+        print_info "You can now use 'rag-plugin-global' from anywhere!"
     else
         print_info "Already in PATH"
     fi
+fi
+
+# Make global installer executable
+if [ -f "$SCRIPT_DIR/rag-plugin-global" ]; then
+    chmod +x "$SCRIPT_DIR/rag-plugin-global"
 fi
 
 # Installation complete
