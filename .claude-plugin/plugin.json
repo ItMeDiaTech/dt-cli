@@ -8,10 +8,7 @@
     "url": "https://github.com/ItMeDiaTech"
   },
   "license": "MIT",
-  "repository": {
-    "type": "git",
-    "url": "https://github.com/ItMeDiaTech/dt-cli"
-  },
+  "repository": "https://github.com/ItMeDiaTech/dt-cli",
   "homepage": "https://github.com/ItMeDiaTech/dt-cli",
   "keywords": [
     "rag",
@@ -36,6 +33,5 @@
     "./.claude/commands/rag-metrics.md",
     "./.claude/commands/rag-query-advanced.md"
   ],
-  "hooks": "./.claude-plugin/hooks.json",
-  "mcp": "./.claude/mcp-servers.json"
+  "hooks": "./.claude-plugin/hooks.json"
 }
