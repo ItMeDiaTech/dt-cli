@@ -2,7 +2,7 @@
 Knowledge graph builder for code relationships.
 
 Creates a graph database to understand:
-- Classes → Functions → Imports
+- Classes -> Functions -> Imports
 - Call relationships
 - Dependency chains
 - Inheritance hierarchies

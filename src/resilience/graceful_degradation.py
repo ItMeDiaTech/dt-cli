@@ -151,7 +151,7 @@ def fallback_semantic_search(query_text: str, **kwargs) -> List[Dict]:
 
 def fallback_hybrid_search(query_text: str, **kwargs) -> List[Dict]:
     """Fallback for hybrid search - use semantic only."""
-    logger.info("Using fallback: hybrid search → semantic only")
+    logger.info("Using fallback: hybrid search -> semantic only")
     # This would call the semantic search function
     return []
 

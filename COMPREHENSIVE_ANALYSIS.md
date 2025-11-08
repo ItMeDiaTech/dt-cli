@@ -9,7 +9,7 @@
 
 ## SECTION 1: CURRENT STATE ASSESSMENT
 
-### ✅ What's Been Excellently Implemented
+### [OK] What's Been Excellently Implemented
 
 **RAG System (8 modules)**:
 - `enhanced_query_engine.py`: Integrates ALL features with feature flags
@@ -48,7 +48,7 @@
 
 ## SECTION 2: INTEGRATION GAPS
 
-### Gap 1: Monitoring → Action Loop (CRITICAL)
+### Gap 1: Monitoring -> Action Loop (CRITICAL)
 **Current State**: `monitoring.py` collects metrics but doesn't trigger actions
 - Health monitor tracks error_rate but doesn't auto-remediate
 - No alerts on degradation (error_rate > 5%)
@@ -56,17 +56,17 @@
 
 **Missing Integration**:
 ```
-Health Monitor → [Decision Logic] → [Auto-Remediation]
-- Error spike → Clear cache + reset context manager
-- Memory high → Force lazy model unload + clear old contexts
-- Query slowdown → Trigger re-indexing analysis
+Health Monitor -> [Decision Logic] -> [Auto-Remediation]
+- Error spike -> Clear cache + reset context manager
+- Memory high -> Force lazy model unload + clear old contexts
+- Query slowdown -> Trigger re-indexing analysis
 ```
 
 **Impact**: Silent failures, no proactive recovery
 
 ---
 
-### Gap 2: Query Expansion → Reranking Pipeline
+### Gap 2: Query Expansion -> Reranking Pipeline
 **Current State**: Query expansion and reranking are separate
 - `QueryExpander` generates expanded queries but doesn't feed them back
 - Reranker takes top-k but doesn't know about expansions
@@ -76,18 +76,18 @@ Health Monitor → [Decision Logic] → [Auto-Remediation]
 ```
 Original Query
     ↓
-[Expand Query] → [Multiple Expanded Queries]
+[Expand Query] -> [Multiple Expanded Queries]
     ↓
-[Hybrid Search] → [Top-K from each] → [Combine Results]
+[Hybrid Search] -> [Top-K from each] -> [Combine Results]
     ↓
-[Rerank] → [Final Results]
+[Rerank] -> [Final Results]
 ```
 
 **Current**: Only ranks single query results. Misses opportunities.
 
 ---
 
-### Gap 3: Git Tracker → Auto-Indexing Trigger
+### Gap 3: Git Tracker -> Auto-Indexing Trigger
 **Current State**: Git tracker detects changes but doesn't auto-trigger indexing
 - `GitChangeTracker.get_changed_files()` returns changes but is never called
 - No hook for pre-commit/post-commit indexing
@@ -108,7 +108,7 @@ Update vector store
 
 ---
 
-### Gap 4: Agent Results → Context Manager → Claude Code
+### Gap 4: Agent Results -> Context Manager -> Claude Code
 **Current State**: Agents produce results but context integration is loose
 - `EnhancedAgentOrchestrator` creates agents but doesn't maximize context reuse
 - BoundedContextManager stores contexts but agents don't query them
@@ -121,7 +121,7 @@ Update vector store
 
 ---
 
-### Gap 5: Cache → Query Expansion
+### Gap 5: Cache -> Query Expansion
 **Current State**: Cache works on exact queries only
 - "Find auth flow" and "how does authentication work?" are different cache keys
 - Query expansion happens but expanded queries aren't cached together
@@ -175,7 +175,7 @@ class EntityExtractor:
 # src/rag/knowledge_graph.py
 class KnowledgeGraph:
     # Build graph from entity relationships
-    # Query: "What calls authentication?" → Direct answer
+    # Query: "What calls authentication?" -> Direct answer
     # Current: Keyword search only
 ```
 
@@ -237,7 +237,7 @@ class IntentClassifier:
     def classify(self, query) -> str:
         # Use heuristics or small model
         # Route to appropriate search strategy
-        # E.g., 'relationship' → use entity graph
+        # E.g., 'relationship' -> use entity graph
 ```
 
 **Impact**: More targeted search results
@@ -480,7 +480,7 @@ class CorrelationIdFilter(logging.Filter):
 class RateLimiter:
     def __init__(self, requests_per_minute=60):
         self.limit = requests_per_minute
-        self.history = {}  # IP → [timestamps]
+        self.history = {}  # IP -> [timestamps]
     
     def check_limit(self, client_id):
         now = time.time()
@@ -656,7 +656,7 @@ class SuggestionEngine:
     def suggest_related_queries(self, query, results):
         # Extract entities from top results
         # Find related but different queries
-        # "Find auth flow" → suggest "test authentication", "handle login errors"
+        # "Find auth flow" -> suggest "test authentication", "handle login errors"
         return [
             {"query": "...", "reason": "Related to found class"},
             # ...
@@ -701,7 +701,7 @@ class TypoCorrector:
     def suggest_corrections(self, query):
         # Use fuzzy matching (Levenshtein distance)
         # Against known entities (class names, functions)
-        # "authentification" → "authentication"
+        # "authentification" -> "authentication"
         return suggestions
 ```
 
@@ -1391,11 +1391,11 @@ Context: [Full auth context] + [Tests for auth]
 ```
 User Query
     ↓
-[Router Agent] → Decide which agent(s) needed
+[Router Agent] -> Decide which agent(s) needed
     ↓
 [Execute agents in parallel]
     ↓
-[Synthesizer] → Combine results
+[Synthesizer] -> Combine results
     ↓
 [Result]
 ```
@@ -1504,7 +1504,7 @@ PRESETS = {
 ## SECTION 12: PRIORITIZED ROADMAP
 
 ### Must-Do (Foundation Stability)
-1. **Monitoring → Action Loop** (8 hours)
+1. **Monitoring -> Action Loop** (8 hours)
    - Health check triggers remediation
    - Auto-recovery from common failures
 
@@ -1552,7 +1552,7 @@ PRESETS = {
 ## FINAL RECOMMENDATIONS
 
 ### Top 3 Improvements (Highest Impact/Effort Ratio)
-1. **Monitoring → Action Loop** (CRITICAL)
+1. **Monitoring -> Action Loop** (CRITICAL)
    - Enables production deployment
    - Prevents silent failures
    - 8 hours, huge impact

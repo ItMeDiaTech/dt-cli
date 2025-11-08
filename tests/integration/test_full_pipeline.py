@@ -2,8 +2,8 @@
 Integration tests for full RAG-MAF pipeline.
 
 Tests end-to-end workflows:
-- Indexing → Query
-- Query Expansion → Hybrid Search → Reranking
+- Indexing -> Query
+- Query Expansion -> Hybrid Search -> Reranking
 - Multi-agent orchestration
 - Component integration
 - Performance regression

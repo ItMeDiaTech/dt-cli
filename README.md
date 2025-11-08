@@ -32,6 +32,7 @@ A comprehensive Retrieval-Augmented Generation (RAG) plugin for Claude Code that
 
 ## Installation
 
+### Prerequisites
 ### Ubuntu Server (Complete Setup)
 
 For a complete installation on Ubuntu Server including Claude Code + dt-cli:
@@ -52,21 +53,73 @@ chmod +x ubuntu-install.sh
 
 Simply install the plugin in Claude Code:
 
+- Python 3.8 or higher
+- pip (Python package manager)
+- Git
+
+### Quick Install
+
+1. **Clone the repository**:
 ```bash
+git clone https://github.com/ItMeDiaTech/dt-cli.git
+cd dt-cli
 # The plugin will auto-install all dependencies and configure itself
 claude install-plugin dt-cli
 ```
 
-Or manually:
+2. **Install Python dependencies**:
+```bash
+pip3 install -r requirements.txt
+```
+
+Or with a virtual environment (recommended):
+```bash
+python3 -m venv venv
+source venv/bin/activate  # On Windows: venv\Scripts\activate
+pip install -r requirements.txt
+```
+
+3. **Verify installation**:
+```bash
+python3 -c "import httpx, chromadb, sentence_transformers, fastapi; print('[OK] All dependencies installed')"
+```
+
+4. **Start using**:
+The plugin will automatically activate when you start a Claude Code session in this directory. The SessionStart hook will:
+- Launch the MCP server on port 8765
+- Index your codebase (first run only)
+- Make all `/rag-*` commands available
+
+### Manual Installation
+
+If you prefer to manually set up:
 
 ```bash
-# Clone the repository
-git clone <repository-url>
-cd dt-cli
-
-# Run installation script
+# Install dependencies
 ./install.sh
+
+# Or manually start the MCP server
+python3 -m src.mcp_server.server
 ```
+
+### Troubleshooting
+
+**Dependencies not installed:**
+```bash
+pip3 install -r requirements.txt
+```
+
+**MCP server won't start:**
+- Check if port 8765 is available: `lsof -i :8765`
+- Check logs: `tail -f /tmp/rag-maf-mcp.log`
+- Verify dependencies are installed (see step 3 above)
+
+**Commands not working:**
+- Ensure MCP server is running: `/rag-status`
+- Check that you're in the project directory
+- Verify `.claude/` configuration files are present
+
+For detailed troubleshooting, see [CODEBASE_AUDIT_REPORT.md](./CODEBASE_AUDIT_REPORT.md)
 
 ## Usage
 

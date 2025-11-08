@@ -59,7 +59,7 @@ class SetupManager:
         # Step 2: Install dependencies
         if not skip_dependencies:
             if not self._install_dependencies():
-                print("⚠️  Dependency installation failed, continuing...")
+                print("[!]  Dependency installation failed, continuing...")
 
         # Step 3: Create configuration
         if not self._create_configuration():
@@ -67,7 +67,7 @@ class SetupManager:
 
         # Step 4: Install Git hooks
         if not self._install_git_hooks():
-            print("⚠️  Git hooks installation failed, continuing...")
+            print("[!]  Git hooks installation failed, continuing...")
 
         # Step 5: Initialize index
         if not self._initialize_index():
@@ -95,11 +95,11 @@ class SetupManager:
         required = (3, 8)
 
         if version >= required:
-            print(f"✅ Python {version.major}.{version.minor}.{version.micro}")
+            print(f"[OK] Python {version.major}.{version.minor}.{version.micro}")
             self.steps_completed.append("Python version check")
             return True
 
-        print(f"❌ Python {required[0]}.{required[1]}+ required (found {version.major}.{version.minor})")
+        print(f"[X] Python {required[0]}.{required[1]}+ required (found {version.major}.{version.minor})")
         self.errors.append("Incompatible Python version")
         return False
 
@@ -110,12 +110,12 @@ class SetupManager:
         Returns:
             True if successful
         """
-        print("\n📦 Installing dependencies...")
+        print("\n[PKG] Installing dependencies...")
 
         requirements_file = self.project_root / 'requirements.txt'
 
         if not requirements_file.exists():
-            print("⚠️  requirements.txt not found")
+            print("[!]  requirements.txt not found")
             return False
 
         try:
@@ -128,12 +128,12 @@ class SetupManager:
                 text=True
             )
 
-            print("✅ Dependencies installed")
+            print("[OK] Dependencies installed")
             self.steps_completed.append("Dependencies installation")
             return True
 
         except subprocess.CalledProcessError as e:
-            print(f"❌ Installation failed: {e}")
+            print(f"[X] Installation failed: {e}")
             print("Check pip output above for details")
             self.errors.append(f"Dependency installation: {e}")
             return False
@@ -145,7 +145,7 @@ class SetupManager:
         Returns:
             True if successful
         """
-        print("\n⚙️  Creating configuration...")
+        print("\n[GEAR]  Creating configuration...")
 
         config_dir = Path.home() / '.rag_config'
         config_dir.mkdir(parents=True, exist_ok=True)
@@ -166,12 +166,12 @@ class SetupManager:
 
         try:
             config_file.write_text(json.dumps(default_config, indent=2))
-            print(f"✅ Configuration created: {config_file}")
+            print(f"[OK] Configuration created: {config_file}")
             self.steps_completed.append("Configuration creation")
             return True
 
         except Exception as e:
-            print(f"❌ Configuration creation failed: {e}")
+            print(f"[X] Configuration creation failed: {e}")
             self.errors.append(f"Configuration: {e}")
             return False
 
@@ -185,7 +185,7 @@ class SetupManager:
         print("\n🪝 Installing Git hooks...")
 
         if not (self.project_root / '.git').exists():
-            print("⚠️  Not a Git repository, skipping hooks")
+            print("[!]  Not a Git repository, skipping hooks")
             return True
 
         try:
@@ -194,15 +194,15 @@ class SetupManager:
             success = install_git_hooks(self.project_root)
 
             if success:
-                print("✅ Git hooks installed")
+                print("[OK] Git hooks installed")
                 self.steps_completed.append("Git hooks installation")
                 return True
             else:
-                print("⚠️  Git hooks installation failed")
+                print("[!]  Git hooks installation failed")
                 return False
 
         except Exception as e:
-            print(f"⚠️  Git hooks error: {e}")
+            print(f"[!]  Git hooks error: {e}")
             return False
 
     def _initialize_index(self) -> bool:
@@ -212,7 +212,7 @@ class SetupManager:
         Returns:
             True if successful
         """
-        print("\n📚 Initializing index...")
+        print("\n[#] Initializing index...")
 
         try:
             from src.rag.enhanced_query_engine import EnhancedQueryEngine
@@ -229,16 +229,16 @@ class SetupManager:
 
             if stats:
                 files_processed = stats.get('files_processed', 0)
-                print(f"✅ Index created ({files_processed} files)")
+                print(f"[OK] Index created ({files_processed} files)")
                 self.steps_completed.append("Index initialization")
                 return True
             else:
-                print("✅ Index created")
+                print("[OK] Index created")
                 self.steps_completed.append("Index initialization")
                 return True
 
         except Exception as e:
-            print(f"❌ Indexing failed: {e}")
+            print(f"[X] Indexing failed: {e}")
             self.errors.append(f"Index initialization: {e}")
             return False
 
@@ -249,7 +249,7 @@ class SetupManager:
         Returns:
             True if verified
         """
-        print("\n🔍 Verifying setup...")
+        print("\n[?] Verifying setup...")
 
         checks = []
 
@@ -264,7 +264,7 @@ class SetupManager:
         # Print checks
         all_passed = True
         for name, passed in checks:
-            status = "✅" if passed else "❌"
+            status = "[OK]" if passed else "[X]"
             print(f"   {status} {name}")
 
             if not passed:
@@ -282,22 +282,22 @@ class SetupManager:
         print("=" * 70)
         print()
 
-        print("✅ Steps completed:")
+        print("[OK] Steps completed:")
         for step in self.steps_completed:
             print(f"   • {step}")
 
         if self.errors:
-            print("\n⚠️  Warnings/Errors:")
+            print("\n[!]  Warnings/Errors:")
             for error in self.errors:
                 print(f"   • {error}")
 
-        print("\n📖 Next steps:")
+        print("\n[BOOK] Next steps:")
         print("   1. Query the codebase: /rag-query <your question>")
         print("   2. View metrics: /rag-metrics")
         print("   3. Save common queries: /rag-save <name> | <query>")
         print()
 
-        print("📚 Documentation:")
+        print("[#] Documentation:")
         print("   • User Guide: USER_GUIDE.md")
         print("   • Implementation Summary: IMPLEMENTATION_SUMMARY.md")
         print()
@@ -410,7 +410,7 @@ wait $MCP_PID
         if not output_path.stat().st_mode & 0o100:
             raise IOError(f"Script is not executable: {output_path}")
 
-        print(f"✅ Startup script generated: {output_path}")
+        print(f"[OK] Startup script generated: {output_path}")
 
     @staticmethod
     def generate_systemd_service(
@@ -484,7 +484,7 @@ WantedBy=multi-user.target
         if file_size < 100 or file_size > 10000:
             raise IOError(f"Generated service file has unexpected size: {file_size} bytes")
 
-        print(f"✅ Systemd service generated: {output_path}")
+        print(f"[OK] Systemd service generated: {output_path}")
         print(f"\n   To install:")
         print(f"   sudo cp {output_path} /etc/systemd/system/")
         print(f"   sudo systemctl daemon-reload")

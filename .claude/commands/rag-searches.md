@@ -31,7 +31,7 @@ try:
         params['tags'] = filter_tags
 
     response = httpx.get(
-        "http://127.0.0.1:8000/searches",
+        "http://127.0.0.1:8765/searches",
         params=params,
         timeout=10.0
     )
@@ -43,9 +43,9 @@ try:
 
         if total == 0:
             print("📭 No saved searches found.")
-            print("\n💡 Save a search with: /rag-save <name> | <query>")
+            print("\n[i] Save a search with: /rag-save <name> | <query>")
         else:
-            print(f"📚 Saved Searches ({total}):")
+            print(f"[#] Saved Searches ({total}):")
             print()
 
             for search in searches:
@@ -66,10 +66,10 @@ try:
                 print()
 
     else:
-        print(f"❌ Server error: {response.status_code}")
+        print(f"[X] Server error: {response.status_code}")
 
 except Exception as e:
-    print(f"❌ Error: {e}")
+    print(f"[X] Error: {e}")
     print("Make sure the MCP server is running on port 8000.")
 ```
 

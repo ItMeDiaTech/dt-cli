@@ -9,14 +9,14 @@
 
 ## CRITICAL FINDINGS
 
-### The Good News ✅
+### The Good News [OK]
 - Solid, well-architected foundation with 7 specialized agents
 - All major RAG features implemented (caching, hybrid search, reranking, incremental indexing)
 - Clean code with comprehensive logging and error handling
 - Production-monitoring infrastructure in place
 - Zero technical debt (no TODOs/FIXMEs in code)
 
-### The Gaps ⚠️
+### The Gaps [!]
 1. **Monitoring doesn't trigger actions** - Metrics collected but no auto-remediation
 2. **Components not integrated** - Query expansion, reranking, git tracking work separately
 3. **Production features missing** - Structured logging, rate limiting, async handling
@@ -26,9 +26,9 @@
 
 ## TOP 5 IMPROVEMENTS TO IMPLEMENT NEXT
 
-### 🔴 CRITICAL (Must-Do - Do First)
+### [FAIL] CRITICAL (Must-Do - Do First)
 
-**1. Monitoring → Action Loop** (8 hours)
+**1. Monitoring -> Action Loop** (8 hours)
 - Error spike triggers cache clear + context reset
 - Memory high triggers model unload
 - Enable proactive recovery
@@ -43,7 +43,7 @@
 - Performance regression detection
 - Validates entire system works
 
-### 🟡 HIGH VALUE (Should-Do - Next Quarter)
+### [WARN] HIGH VALUE (Should-Do - Next Quarter)
 
 **4. Structured Logging + Correlation IDs** (6 hours)
 - Production debugging essential
@@ -61,10 +61,10 @@
 
 | Gap | Impact | Effort | Value |
 |-----|--------|--------|-------|
-| Git Tracker → Auto-Index Trigger | Real-time updates | 6h | High |
-| Query Expansion → Reranking Pipeline | Better search quality | 8h | High |
-| Cache → Query Deduplication | Cache hit rate 60%+ | 6h | Medium |
-| Context Manager → Agent History | Learning from past queries | 8h | Medium |
+| Git Tracker -> Auto-Index Trigger | Real-time updates | 6h | High |
+| Query Expansion -> Reranking Pipeline | Better search quality | 8h | High |
+| Cache -> Query Deduplication | Cache hit rate 60%+ | 6h | Medium |
+| Context Manager -> Agent History | Learning from past queries | 8h | Medium |
 
 ---
 
@@ -110,11 +110,11 @@
 ## PERFORMANCE OPTIMIZATIONS
 
 **Already Implemented**:
-- Lazy model loading ✅
-- Query result caching ✅
-- Incremental indexing ✅
-- Hybrid search ✅
-- Cross-encoder reranking ✅
+- Lazy model loading [OK]
+- Query result caching [OK]
+- Incremental indexing [OK]
+- Hybrid search [OK]
+- Cross-encoder reranking [OK]
 
 **Still Possible** (15-20% more improvement):
 - Vector store sharding (5-10x faster)
@@ -130,12 +130,12 @@
 
 | Category | Current | Gap |
 |----------|---------|-----|
-| Unit Tests | ✅ Comprehensive | - |
-| Integration Tests | ❌ None | CRITICAL |
-| Performance Tests | ❌ None | CRITICAL |
-| Error Scenario Tests | ⚠️ Minimal | HIGH |
-| Concurrency Tests | ❌ None | MEDIUM |
-| Memory Leak Tests | ❌ None | MEDIUM |
+| Unit Tests | [OK] Comprehensive | - |
+| Integration Tests | [X] None | CRITICAL |
+| Performance Tests | [X] None | CRITICAL |
+| Error Scenario Tests | [!] Minimal | HIGH |
+| Concurrency Tests | [X] None | MEDIUM |
+| Memory Leak Tests | [X] None | MEDIUM |
 
 ---
 
@@ -143,12 +143,12 @@
 
 | Type | Current | Value |
 |------|---------|-------|
-| API Reference | ❌ No Swagger | MEDIUM |
-| Architecture Decision Records | ⚠️ Minimal | MEDIUM |
-| Troubleshooting Guide | ⚠️ Basic | MEDIUM |
-| Extension Guide | ❌ None | HIGH |
-| Performance Tuning | ❌ None | MEDIUM |
-| Deployment Guide | ❌ None | HIGH |
+| API Reference | [X] No Swagger | MEDIUM |
+| Architecture Decision Records | [!] Minimal | MEDIUM |
+| Troubleshooting Guide | [!] Basic | MEDIUM |
+| Extension Guide | [X] None | HIGH |
+| Performance Tuning | [X] None | MEDIUM |
+| Deployment Guide | [X] None | HIGH |
 
 ---
 
@@ -167,7 +167,7 @@
 ## RECOMMENDED 6-MONTH ROADMAP
 
 ### Month 1: Foundation Stability
-- Monitoring → action loop
+- Monitoring -> action loop
 - Graceful degradation
 - Structured logging + correlation IDs
 - Rate limiting
@@ -242,7 +242,7 @@
 
 ### Week 1
 1. Add integration tests (E2E indexing to query)
-2. Implement monitoring → action loop
+2. Implement monitoring -> action loop
 3. Add health check endpoint
 
 ### Week 2

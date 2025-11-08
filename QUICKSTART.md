@@ -13,10 +13,10 @@ cd dt-cli
 ```
 
 That's it! The installer handles everything:
-- ✅ Python environment setup
-- ✅ Dependency installation
-- ✅ Model downloads
-- ✅ Configuration
+- [OK] Python environment setup
+- [OK] Dependency installation
+- [OK] Model downloads
+- [OK] Configuration
 
 ## First Use
 
@@ -197,7 +197,7 @@ First query after startup may be slow (model loading). Subsequent queries are fa
 ## Support
 
 - 🐛 Issues: GitHub Issues
-- 📖 Docs: README.md
-- 💬 Discussions: GitHub Discussions
+- [BOOK] Docs: README.md
+- [MSG] Discussions: GitHub Discussions
 
-Happy coding with RAG-powered assistance! 🚀
+Happy coding with RAG-powered assistance! [*]

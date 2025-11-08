@@ -25,7 +25,7 @@ The user wants to index the codebase. This will:
 import httpx
 import json
 
-print("📚 Starting codebase indexing...")
+print("[#] Starting codebase indexing...")
 print("This may take a few minutes depending on codebase size.\n")
 
 try:
@@ -45,8 +45,8 @@ try:
         if result.get("success"):
             status = result.get("status", {})
 
-            print("✅ Indexing complete!\n")
-            print(f"📊 Status:")
+            print("[OK] Indexing complete!\n")
+            print(f"[=] Status:")
             print(f"   Indexed chunks: {status.get('indexed_chunks', 0)}")
             print(f"   Embedding model: {status.get('embedding_model', 'unknown')}")
             print(f"   Status: {status.get('status', 'unknown')}")

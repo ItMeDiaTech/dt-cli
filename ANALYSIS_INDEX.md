@@ -1,6 +1,6 @@
 # Analysis Index & Navigation
 
-## 📊 What's Been Analyzed
+## [=] What's Been Analyzed
 
 This comprehensive analysis examines the dt-cli RAG-MAF plugin after all recent improvements to identify the next steps for development.
 
@@ -22,7 +22,7 @@ This comprehensive analysis examines the dt-cli RAG-MAF plugin after all recent 
 
 ---
 
-## 🔍 Analysis Coverage
+## [?] Analysis Coverage
 
 ### Files Examined
 - 29 Python source files (4,840 lines of code)
@@ -33,13 +33,13 @@ This comprehensive analysis examines the dt-cli RAG-MAF plugin after all recent 
 
 ### Sections Analyzed
 
-#### 1. Current State Assessment ✅
+#### 1. Current State Assessment [OK]
 - What's implemented well
 - Architecture evaluation
 - Code quality review
 - No technical debt found
 
-#### 2. Integration Gaps 🔴 CRITICAL
+#### 2. Integration Gaps [FAIL] CRITICAL
 Five major gaps identified:
 1. Monitoring doesn't trigger remediation
 2. Query expansion & reranking not coordinated
@@ -47,7 +47,7 @@ Five major gaps identified:
 4. Agent results not using context history
 5. Cache not semantic (exact-query only)
 
-#### 3. Missing Features 🟡 HIGH VALUE
+#### 3. Missing Features [WARN] HIGH VALUE
 Seven categories identified:
 - Adaptive chunking
 - Entity extraction & knowledge graph
@@ -57,7 +57,7 @@ Seven categories identified:
 - Fallback strategies
 - Context optimization
 
-#### 4. Performance Optimizations ⚡
+#### 4. Performance Optimizations [!]
 Six possible improvements (15-20% more gain):
 - Vector store sharding (5-10x faster)
 - Persistent caching
@@ -84,7 +84,7 @@ Six UX improvements identified:
 - Typo correction
 - Snippet enhancement
 
-#### 7. Advanced RAG Techniques 🚀
+#### 7. Advanced RAG Techniques [*]
 Seven techniques not yet used:
 - Query complexity weighting
 - Specialized embeddings per-language
@@ -94,7 +94,7 @@ Seven techniques not yet used:
 - Multi-vector retrieval
 - Prompt-based optimization
 
-#### 8. Testing Gaps ❌
+#### 8. Testing Gaps [X]
 Five test categories missing:
 - Integration testing (E2E)
 - Performance benchmarks
@@ -102,7 +102,7 @@ Five test categories missing:
 - Concurrency testing
 - Memory leak testing
 
-#### 9. Documentation Improvements 📚
+#### 9. Documentation Improvements [#]
 Six doc types needed:
 - API Reference (OpenAPI/Swagger)
 - Architecture Decision Records
@@ -111,7 +111,7 @@ Six doc types needed:
 - Performance Tuning
 - Deployment Guide
 
-#### 10. Next-Level Features 🎯
+#### 10. Next-Level Features [>]
 Six feature clusters ready:
 - Level 1: Smart caching
 - Level 2: Advanced search
@@ -122,7 +122,7 @@ Six feature clusters ready:
 
 ---
 
-## 📈 Key Metrics
+## [CHART] Key Metrics
 
 ### Project Scale
 - **Total Code**: 4,840 lines Python
@@ -144,15 +144,15 @@ Six feature clusters ready:
 
 ---
 
-## 🎯 Top 5 Immediate Actions
+## [>] Top 5 Immediate Actions
 
 ### Week 1 (Critical Path)
 1. **Integration Tests** (10h)
-   - End-to-end indexing → query workflows
+   - End-to-end indexing -> query workflows
    - Performance regression detection
    - File: tests/test_e2e.py
 
-2. **Monitoring → Action Loop** (8h)
+2. **Monitoring -> Action Loop** (8h)
    - Error spike triggers remediation
    - Health-based auto-recovery
    - File: src/mcp_server/resilience.py
@@ -175,52 +175,52 @@ Six feature clusters ready:
 
 ---
 
-## 🚀 6-Month Roadmap
+## [*] 6-Month Roadmap
 
 ### Month 1: Foundation Stability
-✓ Monitoring → action loops
-✓ Graceful degradation  
-✓ Structured logging
-✓ Rate limiting
+[OK] Monitoring -> action loops
+[OK] Graceful degradation  
+[OK] Structured logging
+[OK] Rate limiting
 
 ### Month 2: Testing & Integration
-✓ E2E tests
-✓ Performance benchmarks
-✓ Concurrency tests
-✓ Error coverage
+[OK] E2E tests
+[OK] Performance benchmarks
+[OK] Concurrency tests
+[OK] Error coverage
 
 ### Month 3: Production Ready
-✓ Async request handling
-✓ Database migrations
-✓ Result compression
-✓ Health endpoints
+[OK] Async request handling
+[OK] Database migrations
+[OK] Result compression
+[OK] Health endpoints
 
 ### Month 4: Advanced Search
-✓ Entity extraction
-✓ Knowledge graph
-✓ Intent classification
-✓ Fallback strategies
+[OK] Entity extraction
+[OK] Knowledge graph
+[OK] Intent classification
+[OK] Fallback strategies
 
 ### Month 5: Performance
-✓ Vector store sharding
-✓ Persistent cache
-✓ ANN with HNSW
-✓ Specialized embeddings
+[OK] Vector store sharding
+[OK] Persistent cache
+[OK] ANN with HNSW
+[OK] Specialized embeddings
 
 ### Month 6: Polish
-✓ Multi-vector retrieval
-✓ Confidence scoring
-✓ Documentation generation
-✓ Community enablement
+[OK] Multi-vector retrieval
+[OK] Confidence scoring
+[OK] Documentation generation
+[OK] Community enablement
 
 ---
 
-## 📋 Quick Reference
+## [LIST] Quick Reference
 
 ### By Category
 
 **Integration Gaps** (Most Critical)
-- Monitoring → Action Loop
+- Monitoring -> Action Loop
 - Query Expansion Pipeline
 - Git Auto-Trigger
 - Agent Context Sharing
@@ -281,7 +281,7 @@ Six feature clusters ready:
 ### By Priority
 
 **CRITICAL (Do First)**
-1. Monitoring → action loop
+1. Monitoring -> action loop
 2. Graceful degradation
 3. Integration tests
 4. Structured logging
@@ -303,49 +303,49 @@ Six feature clusters ready:
 
 ---
 
-## 📚 How to Use These Documents
+## [#] How to Use These Documents
 
 ### If You Have 15 Minutes
-→ Read: ANALYSIS_EXECUTIVE_SUMMARY.md
-→ Focus: Top 5 improvements, critical gaps, 6-month plan
+-> Read: ANALYSIS_EXECUTIVE_SUMMARY.md
+-> Focus: Top 5 improvements, critical gaps, 6-month plan
 
 ### If You Have 1 Hour
-→ Read: ANALYSIS_EXECUTIVE_SUMMARY.md (15min)
-→ Read: COMPREHENSIVE_ANALYSIS.md sections 1-6 (45min)
-→ Focus: Understand gaps and missing features
+-> Read: ANALYSIS_EXECUTIVE_SUMMARY.md (15min)
+-> Read: COMPREHENSIVE_ANALYSIS.md sections 1-6 (45min)
+-> Focus: Understand gaps and missing features
 
 ### If You Have 3+ Hours
-→ Read: Complete COMPREHENSIVE_ANALYSIS.md
-→ Focus: Implementation details, code examples, full roadmap
-→ Use: Copy code snippets directly into project
+-> Read: Complete COMPREHENSIVE_ANALYSIS.md
+-> Focus: Implementation details, code examples, full roadmap
+-> Use: Copy code snippets directly into project
 
 ### For Development
-→ Reference: COMPREHENSIVE_ANALYSIS.md sections 2-7
-→ Copy: Code examples provided for each feature
-→ Estimate: Effort times included for each item
-→ Priority: Use priority indicators to sequence work
+-> Reference: COMPREHENSIVE_ANALYSIS.md sections 2-7
+-> Copy: Code examples provided for each feature
+-> Estimate: Effort times included for each item
+-> Priority: Use priority indicators to sequence work
 
 ---
 
-## 💡 Key Insights
+## [i] Key Insights
 
 ### What's Working Well
-✅ Solid architecture with clean separation of concerns
-✅ Comprehensive RAG features (caching, hybrid search, reranking, incremental indexing)
-✅ Multi-agent framework with 7 specialized agents
-✅ Production monitoring infrastructure
-✅ Zero technical debt in codebase
+[OK] Solid architecture with clean separation of concerns
+[OK] Comprehensive RAG features (caching, hybrid search, reranking, incremental indexing)
+[OK] Multi-agent framework with 7 specialized agents
+[OK] Production monitoring infrastructure
+[OK] Zero technical debt in codebase
 
 ### What Needs Work
-⚠️ Components not fully integrated (monitoring, git tracking, query expansion)
-⚠️ Testing incomplete (no integration/performance/concurrency tests)
-⚠️ Production features missing (structured logging, rate limiting, async handling)
-⚠️ UX could be improved (explainability, suggestions, history)
+[!] Components not fully integrated (monitoring, git tracking, query expansion)
+[!] Testing incomplete (no integration/performance/concurrency tests)
+[!] Production features missing (structured logging, rate limiting, async handling)
+[!] UX could be improved (explainability, suggestions, history)
 
 ### Quick Wins Available
-🎯 10+ improvements < 5 hours each
-🎯 20+ improvements 5-15 hours each
-🎯 Total: ~250 hours to production excellence
+[>] 10+ improvements < 5 hours each
+[>] 20+ improvements 5-15 hours each
+[>] Total: ~250 hours to production excellence
 
 ### Path to Excellence
 1. **Month 1-2**: Foundation stability + testing (70 hours)
@@ -354,7 +354,7 @@ Six feature clusters ready:
 
 ---
 
-## 🔗 File Locations
+## [LINK] File Locations
 
 **Source Code Analyzed**:
 - src/rag/ - 8 modules, 2000+ lines
@@ -377,7 +377,7 @@ Six feature clusters ready:
 
 ---
 
-## 🎓 Next Steps
+## [GRAD] Next Steps
 
 ### For Developers
 1. Read ANALYSIS_EXECUTIVE_SUMMARY.md (15 min)

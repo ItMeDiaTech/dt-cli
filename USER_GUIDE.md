@@ -263,7 +263,7 @@ prefetcher.start_prefetching()
 ```
 
 **How It Works**:
-1. Learns query sequences (A → B → C)
+1. Learns query sequences (A -> B -> C)
 2. Predicts next likely queries
 3. Prefetches results in background
 4. Results available instantly when queried

@@ -16,7 +16,7 @@ logger = StructuredLogger(__name__)
 
 class IntegratedQueryPipeline:
     """
-    Unified pipeline: Query Expansion → Hybrid Search → Reranking.
+    Unified pipeline: Query Expansion -> Hybrid Search -> Reranking.
     """
 
     def __init__(

@@ -23,7 +23,7 @@ import json
 try:
     # Get all metrics
     response = httpx.get(
-        "http://127.0.0.1:8000/metrics",
+        "http://127.0.0.1:8765/metrics",
         timeout=10.0
     )
 
@@ -31,7 +31,7 @@ try:
         metrics = response.json()
 
         print("=" * 70)
-        print("📊 RAG SYSTEM METRICS DASHBOARD".center(70))
+        print("[=] RAG SYSTEM METRICS DASHBOARD".center(70))
         print("=" * 70)
         print()
 
@@ -39,7 +39,7 @@ try:
         health = metrics.get("health", {})
         if health:
             status = health.get("status", "unknown").upper()
-            status_emoji = "✅" if status == "HEALTHY" else "⚠️"
+            status_emoji = "[OK]" if status == "HEALTHY" else "[!]"
 
             print(f"{status_emoji} SYSTEM HEALTH: {status}")
 
@@ -55,7 +55,7 @@ try:
         # Query Performance
         perf = metrics.get("performance", {})
         if perf:
-            print("⚡ QUERY PERFORMANCE (7 days)")
+            print("[!] QUERY PERFORMANCE (7 days)")
 
             total = perf.get("total_queries", 0)
             qpd = perf.get("queries_per_day", 0)
@@ -76,7 +76,7 @@ try:
         # Cache Statistics
         cache = metrics.get("cache", {})
         if cache:
-            print("💾 CACHE STATISTICS")
+            print("[@] CACHE STATISTICS")
 
             entries = cache.get("total_entries", 0)
             size_mb = cache.get("total_size_mb", 0)
@@ -90,7 +90,7 @@ try:
         # Get popular queries
         try:
             history_response = httpx.get(
-                "http://127.0.0.1:8000/query-history?days=1",
+                "http://127.0.0.1:8765/query-history?days=1",
                 timeout=5.0
             )
 
@@ -99,7 +99,7 @@ try:
                 popular = history.get("popular_queries", [])
 
                 if popular:
-                    print("🔥 TOP QUERIES (24h)")
+                    print("[FIRE] TOP QUERIES (24h)")
                     for i, query_info in enumerate(popular[:5], 1):
                         query = query_info.get("query", "")
                         count = query_info.get("count", 0)
@@ -116,13 +116,13 @@ try:
 
         print("=" * 70)
 
-        print("\n💡 Refresh with: /rag-metrics")
+        print("\n[i] Refresh with: /rag-metrics")
 
     else:
-        print(f"❌ Server error: {response.status_code}")
+        print(f"[X] Server error: {response.status_code}")
 
 except Exception as e:
-    print(f"❌ Error: {e}")
+    print(f"[X] Error: {e}")
     print("Make sure the MCP server is running on port 8000.")
 ```
 

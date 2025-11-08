@@ -6,18 +6,18 @@ This project implements a comprehensive **Local Retrieval-Augmented Generation (
 
 ## Key Features
 
-### ✅ Fully Local & Open Source
+### [OK] Fully Local & Open Source
 - **Zero External Dependencies**: No API keys or cloud services required
 - **Privacy-First**: All data stays on your machine
 - **100% Open Source**: MIT licensed with free frameworks
 
-### ✅ Advanced RAG System
+### [OK] Advanced RAG System
 - **Vector Embeddings**: sentence-transformers (all-MiniLM-L6-v2)
 - **Vector Database**: ChromaDB for efficient similarity search
 - **Smart Indexing**: Automatic codebase discovery and chunking
 - **Semantic Search**: Find code by meaning, not just keywords
 
-### ✅ Multi-Agent Framework
+### [OK] Multi-Agent Framework
 - **LangGraph Orchestration**: Coordinated multi-agent workflows
 - **4 Specialized Agents**:
   - Code Analyzer: Analyzes code patterns
@@ -25,13 +25,13 @@ This project implements a comprehensive **Local Retrieval-Augmented Generation (
   - Context Synthesizer: Combines multiple sources
   - Suggestion Generator: Provides recommendations
 
-### ✅ Zero-Token Claude Code Integration
+### [OK] Zero-Token Claude Code Integration
 - **MCP Server**: Direct bridge to Claude Code CLI
 - **Session Hooks**: Auto-initialization on startup
 - **Slash Commands**: `/rag-query`, `/rag-index`, `/rag-status`
 - **No Token Overhead**: Tools are local, not LLM-powered
 
-### ✅ Complete Auto-Setup
+### [OK] Complete Auto-Setup
 - **One-Command Install**: `./install.sh` handles everything
 - **Auto-Indexing**: Codebase indexed on first run
 - **Auto-Start**: MCP server starts with Claude Code session
@@ -155,24 +155,24 @@ The plugin auto-initializes and starts indexing.
 
 ### 1. Indexing Phase
 ```
-Codebase → File Discovery → Text Chunking → Embedding Generation → Vector Store
+Codebase -> File Discovery -> Text Chunking -> Embedding Generation -> Vector Store
 ```
 
 ### 2. Query Phase
 ```
-User Query → Embedding → Vector Search → Ranking → Results
+User Query -> Embedding -> Vector Search -> Ranking -> Results
 ```
 
 ### 3. MAF Orchestration
 ```
-Query → Code Analyzer ─┐
-                       ├→ Synthesizer → Suggestion Generator → Results
-Query → Doc Retriever ─┘
+Query -> Code Analyzer ─┐
+                       ├-> Synthesizer -> Suggestion Generator -> Results
+Query -> Doc Retriever ─┘
 ```
 
 ### 4. Claude Code Integration
 ```
-Claude Code → MCP Protocol → MCP Server → RAG/MAF → Results → Claude Code
+Claude Code -> MCP Protocol -> MCP Server -> RAG/MAF -> Results -> Claude Code
 ```
 
 ## Performance
@@ -266,11 +266,11 @@ engine = EmbeddingEngine(model_name="your-model")
 
 ## Security & Privacy
 
-- ✅ **100% Local**: No data sent externally
-- ✅ **No Telemetry**: ChromaDB telemetry disabled
-- ✅ **No API Keys**: No external services
-- ✅ **Open Source**: Full transparency
-- ✅ **Privacy-First**: Your code stays private
+- [OK] **100% Local**: No data sent externally
+- [OK] **No Telemetry**: ChromaDB telemetry disabled
+- [OK] **No API Keys**: No external services
+- [OK] **Open Source**: Full transparency
+- [OK] **Privacy-First**: Your code stays private
 
 ## Deployment Options
 
@@ -294,11 +294,11 @@ docker-compose up -d
 ## Roadmap
 
 ### Phase 1 (Current)
-- ✅ RAG system with ChromaDB
-- ✅ Multi-Agent Framework
-- ✅ MCP server integration
-- ✅ Claude Code hooks and commands
-- ✅ Auto-installation
+- [OK] RAG system with ChromaDB
+- [OK] Multi-Agent Framework
+- [OK] MCP server integration
+- [OK] Claude Code hooks and commands
+- [OK] Auto-installation
 
 ### Phase 2 (Planned)
 - [ ] Incremental indexing
@@ -348,8 +348,8 @@ MIT License - See LICENSE file
 ## Support
 
 - 🐛 **Issues**: GitHub Issues
-- 📖 **Documentation**: README.md, ARCHITECTURE.md
-- 💬 **Discussions**: GitHub Discussions
+- [BOOK] **Documentation**: README.md, ARCHITECTURE.md
+- [MSG] **Discussions**: GitHub Discussions
 - 📧 **Contact**: [Your contact info]
 
 ## Acknowledgments

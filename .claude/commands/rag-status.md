@@ -19,7 +19,7 @@ Display system status including:
 import httpx
 import json
 
-print("📊 RAG-MAF System Status\n")
+print("[=] RAG-MAF System Status\n")
 
 try:
     response = httpx.get(
@@ -32,7 +32,7 @@ try:
 
         # RAG Status
         rag = status.get("rag", {})
-        print("🔍 RAG System:")
+        print("[?] RAG System:")
         print(f"   Indexed chunks: {rag.get('indexed_chunks', 0)}")
         print(f"   Embedding model: {rag.get('embedding_model', 'unknown')}")
         print(f"   Embedding dimension: {rag.get('embedding_dimension', 0)}")
@@ -41,7 +41,7 @@ try:
 
         # MAF Status
         maf = status.get("maf", {})
-        print("🤖 Multi-Agent Framework:")
+        print("[AI] Multi-Agent Framework:")
         agents = maf.get('agents', [])
         print(f"   Available agents: {', '.join(agents)}")
         print(f"   Active contexts: {maf.get('active_contexts', 0)}")
@@ -50,20 +50,20 @@ try:
 
         # Server Status
         server = status.get("server", {})
-        print("📡 MCP Server:")
+        print("[+] MCP Server:")
         print(f"   Host: {server.get('host', 'unknown')}")
         print(f"   Port: {server.get('port', 'unknown')}")
         print(f"   Status: {server.get('status', 'unknown')}")
 
     else:
-        print(f"❌ MCP Server error: {response.status_code}")
+        print(f"[X] MCP Server error: {response.status_code}")
 
 except httpx.ConnectError:
-    print("❌ Cannot connect to MCP server")
+    print("[X] Cannot connect to MCP server")
     print("   The server may not be running.")
     print("   Try restarting your Claude Code session.")
 except Exception as e:
-    print(f"❌ Error: {e}")
+    print(f"[X] Error: {e}")
 ```
 
 Execute this Python code to display system status.

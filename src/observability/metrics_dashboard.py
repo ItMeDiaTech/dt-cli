@@ -94,7 +94,7 @@ class MetricsDashboard:
 
     def _render_health_section(self):
         """Render system health section."""
-        print("📊 SYSTEM HEALTH")
+        print("[=] SYSTEM HEALTH")
         print("-" * 80)
 
         if self.health_monitor:
@@ -121,13 +121,13 @@ class MetricsDashboard:
                     print(f"Degradation Level: {deg_level}")
 
             except Exception as e:
-                print(f"⚠️  Health monitoring unavailable: {e}")
+                print(f"[!]  Health monitoring unavailable: {e}")
         else:
-            print("⚠️  Health monitoring not configured")
+            print("[!]  Health monitoring not configured")
 
     def _render_query_performance(self):
         """Render query performance section."""
-        print("⚡ QUERY PERFORMANCE")
+        print("[!] QUERY PERFORMANCE")
         print("-" * 80)
 
         if self.query_learning_system:
@@ -149,13 +149,13 @@ class MetricsDashboard:
                     print("No query history available")
 
             except Exception as e:
-                print(f"⚠️  Performance metrics unavailable: {e}")
+                print(f"[!]  Performance metrics unavailable: {e}")
         else:
-            print("⚠️  Query learning not configured")
+            print("[!]  Query learning not configured")
 
     def _render_cache_stats(self):
         """Render cache statistics section."""
-        print("💾 CACHE STATISTICS")
+        print("[@] CACHE STATISTICS")
         print("-" * 80)
 
         if self.cache_manager:
@@ -169,13 +169,13 @@ class MetricsDashboard:
                 print(f"Strategies Enabled: {stats.get('strategies_enabled', 0)}")
 
             except Exception as e:
-                print(f"⚠️  Cache stats unavailable: {e}")
+                print(f"[!]  Cache stats unavailable: {e}")
         else:
-            print("⚠️  Cache manager not configured")
+            print("[!]  Cache manager not configured")
 
     def _render_resource_usage(self):
         """Render resource usage section."""
-        print("💻 RESOURCE USAGE")
+        print("[CODE] RESOURCE USAGE")
         print("-" * 80)
 
         try:
@@ -202,13 +202,13 @@ class MetricsDashboard:
             print(f"System Memory: {system_mem.percent:.1f}% used")
 
         except ImportError:
-            print("⚠️  psutil not available for resource monitoring")
+            print("[!]  psutil not available for resource monitoring")
         except Exception as e:
-            print(f"⚠️  Resource monitoring unavailable: {e}")
+            print(f"[!]  Resource monitoring unavailable: {e}")
 
     def _render_recent_activity(self):
         """Render recent activity section."""
-        print("📝 RECENT ACTIVITY")
+        print("[NOTE] RECENT ACTIVITY")
         print("-" * 80)
 
         if self.query_learning_system:
@@ -229,9 +229,9 @@ class MetricsDashboard:
                     print("No recent activity")
 
             except Exception as e:
-                print(f"⚠️  Recent activity unavailable: {e}")
+                print(f"[!]  Recent activity unavailable: {e}")
         else:
-            print("⚠️  Query learning not configured")
+            print("[!]  Query learning not configured")
 
     def get_summary_report(self) -> Dict[str, Any]:
         """
@@ -300,7 +300,7 @@ class MetricsDashboard:
         output_path.write_text(json.dumps(report, indent=2))
 
         logger.info(f"Report exported to {output_path}")
-        print(f"✅ Report exported to {output_path}")
+        print(f"[OK] Report exported to {output_path}")
 
     def _get_status_symbol(self, status: str) -> str:
         """
@@ -313,9 +313,9 @@ class MetricsDashboard:
             Status symbol
         """
         symbols = {
-            'healthy': '✅',
-            'degraded': '⚠️',
-            'unhealthy': '❌',
+            'healthy': '[OK]',
+            'degraded': '[!]',
+            'unhealthy': '[X]',
             'unknown': '❓'
         }
         return symbols.get(status.lower(), '❓')

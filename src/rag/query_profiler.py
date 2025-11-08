@@ -279,7 +279,7 @@ class QueryProfiler:
             print("BOTTLENECKS:")
             print("-" * 80)
             for bottleneck in report['bottlenecks']:
-                severity_symbol = "🔴" if bottleneck['severity'] == 'high' else "🟡"
+                severity_symbol = "[FAIL]" if bottleneck['severity'] == 'high' else "[WARN]"
                 print(f"{severity_symbol} {bottleneck['stage']}: {bottleneck['duration_ms']:.2f}ms "
                       f"({bottleneck['percentage']:.1f}% of total)")
 
