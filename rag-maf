@@ -1,6 +1,5 @@
 #!/bin/bash
 # RAG-MAF CLI wrapper
-
 PLUGIN_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
 # Check if virtual environment exists
@@ -17,8 +16,8 @@ case "$1" in
     start)
         echo "Starting MCP server..."
         cd "$PLUGIN_DIR"
-        # Use direct execution to avoid module import warning
-        PYTHONPATH="$PLUGIN_DIR/src" python3 "$PLUGIN_DIR/src/mcp_server/server.py" &
+        # Use module execution to fix relative imports
+        PYTHONPATH="$PLUGIN_DIR/src" python3 -m src.mcp_server.server &
         SERVER_PID=$!
         echo $SERVER_PID > "$PLUGIN_DIR/.mcp_server.pid"
         echo "MCP server started (PID: $SERVER_PID)"
@@ -32,7 +31,7 @@ case "$1" in
             rm "$PLUGIN_DIR/.mcp_server.pid"
         else
             # Fallback: kill by process name
-            pkill -f "mcp_server/server.py" && echo "MCP server stopped" || echo "MCP server not running"
+            pkill -f "src.mcp_server.server" && echo "MCP server stopped" || echo "No MCP server process found"
         fi
         ;;
     status)
@@ -48,7 +47,7 @@ case "$1" in
                 exit 1
             fi
         else
-            if pgrep -f "mcp_server/server.py" > /dev/null; then
+            if pgrep -f "src.mcp_server.server" > /dev/null; then
                 echo "MCP server is running (no PID file)"
                 exit 0
             else
@@ -60,24 +59,26 @@ case "$1" in
     index)
         echo "Indexing codebase..."
         cd "$PLUGIN_DIR"
-        PYTHONPATH="$PLUGIN_DIR/src" python3 -c "
+        python3 << 'PYSCRIPT'
 import sys
-from rag import QueryEngine
+sys.path.insert(0, 'src')
+from rag.query_engine import QueryEngine
 engine = QueryEngine()
 engine.index_codebase('.')
 print('Indexing complete!')
-"
+PYSCRIPT
         ;;
     test)
         echo "Testing RAG system..."
         cd "$PLUGIN_DIR"
-        PYTHONPATH="$PLUGIN_DIR/src" python3 -c "
+        python3 << 'PYSCRIPT'
 import sys
-from rag import QueryEngine
+sys.path.insert(0, 'src')
+from rag.query_engine import QueryEngine
 engine = QueryEngine()
 print('RAG system initialized successfully!')
 print(f'Vector store location: {engine.vector_store.persist_directory}')
-"
+PYSCRIPT
         ;;
     logs)
         echo "Showing MCP server logs..."

@@ -48,12 +48,19 @@ class QueryEngine:
         else:
             # Try to import global config manager
             try:
-                from ..config.config_manager import config_manager as global_config
+                # Try absolute import first (when run as script)
+                from config.config_manager import config_manager as global_config
                 self.config = global_config
                 logger.info("Using global configuration manager")
             except ImportError:
-                self.config = None
-                logger.warning("ConfigManager not available, using default values")
+                try:
+                    # Fall back to relative import (when run as package)
+                    from ..config.config_manager import config_manager as global_config
+                    self.config = global_config
+                    logger.info("Using global configuration manager")
+                except ImportError:
+                    self.config = None
+                    logger.warning("ConfigManager not available, using default values")
 
         # MEDIUM PRIORITY FIX: Remove hardcoded defaults, use config
         if self.config:
