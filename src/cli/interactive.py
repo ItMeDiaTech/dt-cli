@@ -548,6 +548,253 @@ Type `help` for available commands or choose from the menu below.
         except Exception as e:
             console.print(f"[red]❌ Error: {e}[/red]")
 
+    def evaluate_rag(self):
+        """Evaluate RAG quality using RAGAS metrics."""
+        console.print("\n[bold magenta]Evaluate RAG Quality[/bold magenta]", style="bold")
+        console.print("━" * 60)
+
+        # Get inputs
+        query = Prompt.ask("💬 [bold]Test query[/bold]")
+        if not query.strip():
+            console.print("[yellow]⚠️  Empty query![/yellow]")
+            return
+
+        # Get contexts
+        console.print("\n[yellow]Enter retrieved contexts (one per line, empty line to finish):[/yellow]")
+        contexts = []
+        try:
+            while True:
+                ctx = input()
+                if not ctx:
+                    break
+                contexts.append(ctx)
+        except EOFError:
+            pass
+
+        if not contexts:
+            console.print("[yellow]⚠️  No contexts provided![/yellow]")
+            return
+
+        # Get generated answer
+        console.print("\n[yellow]Paste the generated answer (Ctrl+D when done):[/yellow]")
+        answer_lines = []
+        try:
+            while True:
+                line = input()
+                answer_lines.append(line)
+        except EOFError:
+            pass
+
+        generated_answer = "\n".join(answer_lines)
+        if not generated_answer.strip():
+            console.print("[yellow]⚠️  No answer provided![/yellow]")
+            return
+
+        # Optional ground truth
+        has_ground_truth = Confirm.ask("Do you have ground truth answer?", default=False)
+        ground_truth = None
+        if has_ground_truth:
+            console.print("\n[yellow]Paste ground truth (Ctrl+D when done):[/yellow]")
+            gt_lines = []
+            try:
+                while True:
+                    line = input()
+                    gt_lines.append(line)
+            except EOFError:
+                pass
+            ground_truth = "\n".join(gt_lines)
+
+        with Progress(
+            SpinnerColumn(),
+            TextColumn("[progress.description]{task.description}"),
+            console=console
+        ) as progress:
+            task = progress.add_task("📊 Evaluating with RAGAS metrics...", total=None)
+
+            try:
+                response = self.session.post(
+                    f"{self.base_url}/evaluate",
+                    json={
+                        "query": query,
+                        "retrieved_contexts": contexts,
+                        "generated_answer": generated_answer,
+                        "ground_truth": ground_truth
+                    },
+                    timeout=60
+                )
+
+                progress.update(task, completed=True)
+
+                if response.status_code == 200:
+                    result = response.json()
+
+                    # Show metrics
+                    console.print("\n[bold green]✓ RAGAS Evaluation Complete![/bold green]")
+
+                    console.print("\n[bold]📊 Metrics:[/bold]")
+                    metrics = result.get('metrics', {})
+
+                    # Always available metrics
+                    if 'context_relevance' in metrics:
+                        score = metrics['context_relevance']
+                        color = "green" if score >= 0.7 else "yellow" if score >= 0.5 else "red"
+                        console.print(f"  Context Relevance: [{color}]{score:.2%}[/{color}]")
+
+                    if 'answer_faithfulness' in metrics:
+                        score = metrics['answer_faithfulness']
+                        color = "green" if score >= 0.7 else "yellow" if score >= 0.5 else "red"
+                        console.print(f"  Answer Faithfulness: [{color}]{score:.2%}[/{color}]")
+
+                    if 'answer_relevance' in metrics:
+                        score = metrics['answer_relevance']
+                        color = "green" if score >= 0.7 else "yellow" if score >= 0.5 else "red"
+                        console.print(f"  Answer Relevance: [{color}]{score:.2%}[/{color}]")
+
+                    # Ground truth metrics (if available)
+                    if ground_truth and 'context_precision' in metrics:
+                        score = metrics['context_precision']
+                        if score > 0:  # Only show if calculated
+                            color = "green" if score >= 0.7 else "yellow" if score >= 0.5 else "red"
+                            console.print(f"  Context Precision: [{color}]{score:.2%}[/{color}]")
+
+                    if ground_truth and 'context_recall' in metrics:
+                        score = metrics['context_recall']
+                        if score > 0:  # Only show if calculated
+                            color = "green" if score >= 0.7 else "yellow" if score >= 0.5 else "red"
+                            console.print(f"  Context Recall: [{color}]{score:.2%}[/{color}]")
+
+                    # Overall score (inside metrics dict)
+                    if 'overall_score' in metrics:
+                        overall = metrics['overall_score']
+                        color = "green" if overall >= 0.7 else "yellow" if overall >= 0.5 else "red"
+                        console.print(f"\n[bold]Overall Score: [{color}]{overall:.2%}[/{color}][/bold]")
+
+                        # Assessment
+                        if overall >= 0.8:
+                            console.print("[bold green]✓ Excellent quality![/bold green]")
+                        elif overall >= 0.6:
+                            console.print("[bold yellow]⚠️  Good, but room for improvement[/bold yellow]")
+                        else:
+                            console.print("[bold red]❌ Needs improvement[/bold red]")
+
+                else:
+                    console.print(f"[red]❌ Error: {response.status_code}[/red]")
+
+            except Exception as e:
+                console.print(f"[red]❌ Error: {e}[/red]")
+
+    def hybrid_search_ui(self):
+        """Perform hybrid search."""
+        console.print("\n[bold cyan]Hybrid Search[/bold cyan]", style="bold")
+        console.print("━" * 60)
+
+        # Get query
+        query = Prompt.ask("🔎 [bold]Search query[/bold]")
+        if not query.strip():
+            console.print("[yellow]⚠️  Empty query![/yellow]")
+            return
+
+        # Get documents to search
+        console.print("\n[yellow]Enter documents to search (one per line, empty line to finish):[/yellow]")
+        console.print("[dim]You can paste code snippets, file contents, or any text[/dim]")
+        documents = []
+        try:
+            while True:
+                doc = input()
+                if not doc:
+                    break
+                documents.append(doc)
+        except EOFError:
+            pass
+
+        if not documents:
+            console.print("[yellow]⚠️  No documents provided![/yellow]")
+            return
+
+        # Optional: tune weights
+        tune_weights = Confirm.ask("Customize search weights?", default=False)
+        semantic_weight = 0.7
+        keyword_weight = 0.3
+
+        if tune_weights:
+            semantic_weight = float(Prompt.ask("Semantic weight (0-1)", default="0.7"))
+            keyword_weight = 1.0 - semantic_weight
+            console.print(f"[dim]Keyword weight: {keyword_weight:.1f}[/dim]")
+
+        # Optional: top k
+        top_k = int(Prompt.ask("Number of results to return", default="5"))
+
+        with Progress(
+            SpinnerColumn(),
+            TextColumn("[progress.description]{task.description}"),
+            console=console
+        ) as progress:
+            task = progress.add_task("🔎 Performing hybrid search...", total=None)
+
+            try:
+                response = self.session.post(
+                    f"{self.base_url}/hybrid-search",
+                    json={
+                        "query": query,
+                        "documents": documents,
+                        "semantic_weight": semantic_weight,
+                        "keyword_weight": keyword_weight,
+                        "top_k": top_k
+                    },
+                    timeout=30
+                )
+
+                progress.update(task, completed=True)
+
+                if response.status_code == 200:
+                    result = response.json()
+
+                    # Show results
+                    console.print("\n[bold green]✓ Search Complete![/bold green]")
+
+                    # Show weights
+                    weights = result.get('weights', {})
+                    console.print(f"\n[dim]Weights: Semantic={weights.get('semantic', 0):.1f}, Keyword={weights.get('keyword', 0):.1f}[/dim]")
+
+                    # Show results
+                    results = result.get('results', [])
+                    if results:
+                        console.print(f"\n[bold]🔎 Top {len(results)} Results:[/bold]\n")
+
+                        for i, res in enumerate(results, 1):
+                            # Get scores (they're inside 'scores' dict)
+                            scores = res.get('scores', {})
+                            combined_score = scores.get('combined', 0)
+                            semantic = scores.get('semantic', 0)
+                            keyword = scores.get('keyword', 0)
+
+                            # Score with color coding
+                            color = "green" if combined_score >= 0.7 else "yellow" if combined_score >= 0.5 else "blue"
+
+                            console.print(f"[bold {color}]{i}. Score: {combined_score:.3f}[/bold {color}]")
+
+                            # Individual scores
+                            console.print(f"   [dim]Semantic: {semantic:.3f} | Keyword: {keyword:.3f}[/dim]")
+
+                            # Document preview
+                            text = res.get('text', '')
+                            preview = text[:200] + "..." if len(text) > 200 else text
+                            console.print(f"   {preview}")
+
+                            # Metadata if available
+                            if res.get('metadata'):
+                                console.print(f"   [dim]Metadata: {res['metadata']}[/dim]")
+
+                            console.print()
+                    else:
+                        console.print("[yellow]No results found[/yellow]")
+
+                else:
+                    console.print(f"[red]❌ Error: {response.status_code}[/red]")
+
+            except Exception as e:
+                console.print(f"[red]❌ Error: {e}[/red]")
+
     def show_help(self):
         """Show help information."""
         help_text = """
@@ -611,9 +858,9 @@ See README.md and PHASE*.md files for detailed documentation.
                 elif choice == "4":
                     self.explore_graph()
                 elif choice == "5":
-                    console.print("[yellow]Evaluation feature - use /evaluate endpoint[/yellow]")
+                    self.evaluate_rag()
                 elif choice == "6":
-                    console.print("[yellow]Hybrid search feature - use /hybrid-search endpoint[/yellow]")
+                    self.hybrid_search_ui()
                 elif choice == "7":
                     self.view_stats()
                 elif choice == "8":

@@ -153,27 +153,60 @@ class TestDTCliInteractive:
         assert hasattr(cli, 'evaluate_rag')
 
     @patch('requests.Session.post')
-    @patch('builtins.input', side_effect=["test search", ""])
-    def test_hybrid_search(self, mock_input, mock_post):
-        """Test hybrid search."""
+    @patch('builtins.input', side_effect=["test query", "context1", "", "answer text", ""])
+    def test_evaluate_rag(self, mock_input, mock_post):
+        """Test RAG evaluation."""
         mock_response = Mock()
+        mock_response.status_code = 200
         mock_response.json.return_value = {
-            "results": [
-                {
-                    "text": "result 1",
-                    "scores": {
-                        "semantic": 0.9,
-                        "keyword": 0.7,
-                        "combined": 0.8
-                    }
-                }
-            ]
+            "query": "test query",
+            "metrics": {
+                "context_relevance": 0.9,
+                "answer_faithfulness": 0.85,
+                "answer_relevance": 0.92,
+                "context_precision": 0.0,
+                "context_recall": 0.0,
+                "overall_score": 0.89
+            },
+            "retrieved_contexts_count": 1,
+            "answer_length": 11
         }
         mock_post.return_value = mock_response
 
         cli = DTCliInteractive()
 
-        assert hasattr(cli, 'hybrid_search')
+        assert hasattr(cli, 'evaluate_rag')
+
+    @patch('requests.Session.post')
+    @patch('builtins.input', side_effect=["test query", "doc1", "doc2", "", ""])
+    def test_hybrid_search_ui(self, mock_input, mock_post):
+        """Test hybrid search UI."""
+        mock_response = Mock()
+        mock_response.status_code = 200
+        mock_response.json.return_value = {
+            "query": "test query",
+            "results": [
+                {
+                    "text": "result 1",
+                    "metadata": {},
+                    "scores": {
+                        "semantic": 0.9,
+                        "keyword": 0.7,
+                        "combined": 0.8
+                    },
+                    "rank": 0
+                }
+            ],
+            "weights": {
+                "semantic": 0.7,
+                "keyword": 0.3
+            }
+        }
+        mock_post.return_value = mock_response
+
+        cli = DTCliInteractive()
+
+        assert hasattr(cli, 'hybrid_search_ui')
 
     def test_show_help(self):
         """Test showing help."""
