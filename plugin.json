@@ -1,11 +1,27 @@
 {
   "name": "dt-cli-rag-maf",
   "version": "1.0.0",
-  "description": "Local RAG plugin with Multi-Agent Framework orchestration for Claude Code",
-  "author": "ItMeDiaTech",
+  "description": "Local RAG plugin with Multi-Agent Framework orchestration for context-aware development assistance",
+  "author": {
+    "name": "ItMeDiaTech",
+    "email": "",
+    "url": "https://github.com/ItMeDiaTech"
+  },
   "license": "MIT",
   "repository": "https://github.com/ItMeDiaTech/dt-cli",
-  "keywords": ["rag", "maf", "embeddings", "vector-search", "multi-agent", "mcp"],
+  "homepage": "https://github.com/ItMeDiaTech/dt-cli",
+  "keywords": [
+    "rag",
+    "retrieval-augmented-generation",
+    "vector-search",
+    "embeddings",
+    "multi-agent",
+    "maf",
+    "mcp",
+    "semantic-search",
+    "code-analysis",
+    "local-ai"
+  ],
   "requires": {
     "claude-code": ">=1.0.0",
     "python": ">=3.8"
@@ -30,5 +46,17 @@
       "enabled": true,
       "port": 8765
     }
-  }
+  },
+  "commands": [
+    "./.claude/commands/rag-query.md",
+    "./.claude/commands/rag-index.md",
+    "./.claude/commands/rag-status.md",
+    "./.claude/commands/rag-save.md",
+    "./.claude/commands/rag-searches.md",
+    "./.claude/commands/rag-exec.md",
+    "./.claude/commands/rag-graph.md",
+    "./.claude/commands/rag-metrics.md",
+    "./.claude/commands/rag-query-advanced.md"
+  ],
+  "hooks": "./.claude-plugin/hooks.json"
 }
