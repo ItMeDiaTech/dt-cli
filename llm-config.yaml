@@ -24,7 +24,8 @@ provider: ollama
 llm:
   # RECOMMENDED: Qwen 2.5-Coder is #1 open-source coding LLM (May 2025)
   # HumanEval: 75-80% | LiveCodeBench: 38.7% | Best for: code generation
-  model_name: qwen2.5-coder:32b
+  # model_name: qwen2.5-coder:32b  # Requires ~32GB RAM
+  model_name: qwen2.5-coder:1.5b  # For systems with 8-16GB RAM
 
   # ALTERNATIVES (uncomment to use):
   # model_name: qwen2.5-coder:7b                 # For 8-16GB RAM systems
