@@ -93,19 +93,40 @@ curl http://localhost:8765/query -X POST -d '{"query": "..."}'
 
 ### Installation
 
+**Quick Setup (Recommended - Uses Virtual Environment)**
+
 ```bash
 # Clone repository
 git clone https://github.com/ItMeDiaTech/dt-cli.git
 cd dt-cli
 
-# Install dependencies
-pip install -r requirements.txt
+# Run automated setup script
+./setup-venv.sh
+
+# Activate virtual environment
+source venv/bin/activate
 
 # Start interactive TUI
 python dt-cli.py
 ```
 
+**Alternative: Manual Installation**
+
+On modern Linux distributions (Ubuntu 24.04+, Debian 12+), you must use a virtual environment due to PEP 668:
+
+```bash
+# Option A: Use the automated script (recommended)
+./setup-venv.sh
+
+# Option B: Manual virtual environment setup
+python3 -m venv venv
+source venv/bin/activate
+pip install -r requirements.txt
+```
+
 **That's it!** The system is ready to use.
+
+> **Note**: Always activate the virtual environment with `source venv/bin/activate` before running dt-cli.
 
 ### First Steps
 
