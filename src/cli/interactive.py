@@ -5,8 +5,12 @@ Provides a beautiful, user-friendly TUI for interacting with the RAG/MAF system
 without needing to know API endpoints or curl commands.
 
 Features:
+- Intelligent intent classification (auto-detects debug, code, review, questions)
+- Project folder selection on startup
+- Planning mode with user approval
+- Verbosity control via slash commands
+- Summary display with diff tracking
 - Command history with up/down arrow navigation
-- Intelligent mode (bypass menu, go directly to RAG)
 - Auto-start server if not running
 - No emojis in interface
 """
@@ -20,13 +24,19 @@ from rich.syntax import Syntax
 from rich.markdown import Markdown
 from rich.layout import Layout
 from rich import box
-from typing import Optional, Dict, Any, List
+from rich.text import Text
+from typing import Optional, Dict, Any, List, Tuple
 import requests
 import sys
 import os
 import subprocess
 import time
 import socket
+import re
+from pathlib import Path
+from enum import Enum
+from dataclasses import dataclass, field
+from datetime import datetime
 
 try:
     from prompt_toolkit import PromptSession
@@ -36,6 +46,176 @@ except ImportError:
     PROMPT_TOOLKIT_AVAILABLE = False
 
 console = Console()
+
+
+class VerbosityLevel(Enum):
+    """Verbosity levels for output control."""
+    QUIET = "quiet"
+    NORMAL = "normal"
+    VERBOSE = "verbose"
+
+
+class IntentType(Enum):
+    """Types of user intents."""
+    DEBUG = "debug"
+    CODE = "code"
+    REVIEW = "review"
+    QUESTION = "question"
+    PLAN = "plan"
+    UNKNOWN = "unknown"
+
+
+@dataclass
+class FileChange:
+    """Track a file change for diff display."""
+    file_path: str
+    lines_added: int = 0
+    lines_removed: int = 0
+    before_snippet: Optional[str] = None
+    after_snippet: Optional[str] = None
+    timestamp: datetime = field(default_factory=datetime.now)
+
+
+class IntentClassifier:
+    """Classifies user intent from natural language input."""
+
+    # Keywords for each intent type
+    PATTERNS = {
+        IntentType.DEBUG: [
+            r'\berror\b', r'\bexception\b', r'\bfail(ed|ing|ure)?\b',
+            r'\bbug\b', r'\bfix\b', r'\bcrash\b', r'\btraceback\b',
+            r'\bstack trace\b', r'\bbroken\b', r'\bissue\b', r'\bdebug\b'
+        ],
+        IntentType.CODE: [
+            r'\bimplement\b', r'\bcreate\b', r'\bbuild\b', r'\bwrite\b',
+            r'\badd (a )?feature\b', r'\bgenerate\b', r'\bcode\b',
+            r'\bmake\b', r'\bdevelop\b', r'\brefactor\b'
+        ],
+        IntentType.REVIEW: [
+            r'\breview\b', r'\bcheck\b', r'\banalyze\b', r'\binspect\b',
+            r'\bquality\b', r'\bsecurity\b', r'\bvulnerabilit(y|ies)\b',
+            r'\bcode smell\b', r'\blint\b'
+        ],
+        IntentType.PLAN: [
+            r'\bplan\b', r'\bdesign\b', r'\barchitecture\b',
+            r'\bstrategy\b', r'\bapproach\b', r'\bhow should (i|we)\b',
+            r"\bwhat['\u2019]s the best way\b", r'\bsteps? (to|for)\b'
+        ],
+        IntentType.QUESTION: [
+            r'^\s*(what|how|where|when|why|who|which)\b',
+            r'\bexplain\b', r'\bdescribe\b', r'\btell me\b',
+            r'\bshow me\b', r'\bfind\b', r'\bsearch\b'
+        ]
+    }
+
+    @classmethod
+    def classify(cls, user_input: str) -> Tuple[IntentType, float]:
+        """
+        Classify user intent from input text.
+
+        Args:
+            user_input: User's natural language input
+
+        Returns:
+            Tuple of (intent_type, confidence_score)
+        """
+        user_input_lower = user_input.lower().strip()
+
+        # Score each intent type
+        scores = {intent: 0 for intent in IntentType}
+
+        for intent_type, patterns in cls.PATTERNS.items():
+            for pattern in patterns:
+                if re.search(pattern, user_input_lower, re.IGNORECASE):
+                    scores[intent_type] += 1
+
+        # Find highest scoring intent
+        if max(scores.values()) == 0:
+            # Default to QUESTION if no patterns match
+            return IntentType.QUESTION, 0.5
+
+        best_intent = max(scores.items(), key=lambda x: x[1])
+        confidence = min(best_intent[1] / 3.0, 1.0)  # Normalize to 0-1
+
+        return best_intent[0], confidence
+
+
+class SummaryTracker:
+    """Tracks actions and file changes for summary display."""
+
+    def __init__(self):
+        self.actions: List[str] = []
+        self.file_changes: List[FileChange] = []
+        self.start_time = datetime.now()
+
+    def add_action(self, action: str):
+        """Add an action to the tracker."""
+        self.actions.append(action)
+
+    def add_file_change(self, change: FileChange):
+        """Add a file change to the tracker."""
+        self.file_changes.append(change)
+
+    def get_summary(self) -> Dict[str, Any]:
+        """Get summary of all tracked changes."""
+        total_added = sum(fc.lines_added for fc in self.file_changes)
+        total_removed = sum(fc.lines_removed for fc in self.file_changes)
+
+        return {
+            'actions': self.actions,
+            'files_changed': len(self.file_changes),
+            'lines_added': total_added,
+            'lines_removed': total_removed,
+            'duration': (datetime.now() - self.start_time).total_seconds(),
+            'changes': self.file_changes
+        }
+
+    def display_summary(self, verbosity: VerbosityLevel = VerbosityLevel.NORMAL):
+        """Display summary with appropriate verbosity level."""
+        summary = self.get_summary()
+
+        if verbosity == VerbosityLevel.QUIET:
+            # Only show if there were changes
+            if summary['files_changed'] > 0:
+                console.print(f"[dim]Modified {summary['files_changed']} file(s)[/dim]")
+            return
+
+        # Normal and verbose modes
+        console.print("\n[bold cyan]Summary[/bold cyan]")
+        console.print("=" * 60)
+
+        # Actions performed
+        if summary['actions']:
+            console.print("\n[bold]Actions performed:[/bold]")
+            for action in summary['actions']:
+                console.print(f"  - {action}")
+
+        # File changes
+        if summary['files_changed'] > 0:
+            console.print(f"\n[bold]Files changed:[/bold] {summary['files_changed']}")
+            console.print(f"  [green]+{summary['lines_added']}[/green] lines added")
+            console.print(f"  [red]-{summary['lines_removed']}[/red] lines removed")
+
+            if verbosity == VerbosityLevel.VERBOSE:
+                # Show detailed changes
+                console.print("\n[bold]Detailed changes:[/bold]")
+                for change in summary['changes']:
+                    console.print(f"\n  [cyan]{change.file_path}[/cyan]")
+                    console.print(f"    [green]+{change.lines_added}[/green] / [red]-{change.lines_removed}[/red]")
+
+                    if change.before_snippet and change.after_snippet:
+                        console.print("\n    [dim]Before:[/dim]")
+                        console.print(Panel(
+                            Syntax(change.before_snippet, "python", theme="monokai", line_numbers=True),
+                            border_style="red"
+                        ))
+                        console.print("\n    [dim]After:[/dim]")
+                        console.print(Panel(
+                            Syntax(change.after_snippet, "python", theme="monokai", line_numbers=True),
+                            border_style="green"
+                        ))
+
+        console.print(f"\n[dim]Duration: {summary['duration']:.2f}s[/dim]")
 
 
 def is_port_available(host: str, port: int) -> bool:
@@ -106,6 +286,9 @@ class DTCliInteractive:
         self.session.headers.update({"Content-Type": "application/json"})
         self.auto_start_server = auto_start_server
         self.server_process = None
+        self.project_folder: Optional[Path] = None
+        self.verbosity: VerbosityLevel = VerbosityLevel.NORMAL
+        self.tracker = SummaryTracker()
 
         # Setup command history
         if PROMPT_TOOLKIT_AVAILABLE:
@@ -177,48 +360,317 @@ class DTCliInteractive:
             console.print(f"[red]Failed to start server: {e}[/red]")
             return False
 
+    def select_project_folder(self):
+        """Prompt user to select project folder."""
+        console.print("\n[bold cyan]Project Folder Selection[/bold cyan]")
+        console.print("=" * 60)
+
+        current_dir = Path.cwd()
+        console.print(f"\nCurrent directory: [cyan]{current_dir}[/cyan]")
+
+        use_current = Confirm.ask(
+            "Is this the base folder for your project?",
+            default=True
+        )
+
+        if use_current:
+            self.project_folder = current_dir
+        else:
+            while True:
+                folder_path = Prompt.ask("\nEnter project directory path")
+                path = Path(folder_path).expanduser().resolve()
+
+                if path.exists() and path.is_dir():
+                    self.project_folder = path
+                    break
+                else:
+                    console.print(f"[red]Directory not found: {path}[/red]")
+                    retry = Confirm.ask("Try again?", default=True)
+                    if not retry:
+                        self.project_folder = current_dir
+                        break
+
+        console.print(f"\n[green]Project folder set to: {self.project_folder}[/green]")
+
+    def handle_slash_command(self, command: str) -> bool:
+        """
+        Handle slash commands.
+
+        Args:
+            command: Command string (e.g., "/verbosity normal")
+
+        Returns:
+            True if command was handled, False otherwise
+        """
+        parts = command.strip().split(maxsplit=1)
+        cmd = parts[0].lower()
+
+        if cmd == "/verbosity":
+            if len(parts) < 2:
+                console.print(f"[yellow]Current verbosity: {self.verbosity.value}[/yellow]")
+                console.print("Usage: /verbosity <quiet|normal|verbose>")
+            else:
+                level = parts[1].lower()
+                if level in ["quiet", "normal", "verbose"]:
+                    self.verbosity = VerbosityLevel(level)
+                    console.print(f"[green]Verbosity set to: {level}[/green]")
+                else:
+                    console.print("[red]Invalid verbosity level. Use: quiet, normal, or verbose[/red]")
+            return True
+
+        elif cmd == "/help":
+            self.show_help()
+            return True
+
+        elif cmd in ["/exit", "/quit"]:
+            return False
+
+        elif cmd == "/folder":
+            console.print(f"[cyan]Current project folder: {self.project_folder}[/cyan]")
+            change = Confirm.ask("Change folder?", default=False)
+            if change:
+                self.select_project_folder()
+            return True
+
+        else:
+            console.print(f"[red]Unknown command: {cmd}[/red]")
+            console.print("Available commands: /verbosity, /help, /folder, /exit")
+            return True
+
+    def process_user_input(self, user_input: str):
+        """
+        Process user input with intelligent intent classification.
+
+        Args:
+            user_input: User's natural language input
+        """
+        # Reset tracker for new request
+        self.tracker = SummaryTracker()
+
+        # Classify intent
+        intent, confidence = IntentClassifier.classify(user_input)
+
+        if self.verbosity == VerbosityLevel.VERBOSE:
+            console.print(f"\n[dim]Intent detected: {intent.value} (confidence: {confidence:.0%})[/dim]")
+
+        # Route to appropriate handler
+        if intent == IntentType.PLAN:
+            self.handle_planning_request(user_input)
+        elif intent == IntentType.DEBUG:
+            self.handle_debug_request(user_input)
+        elif intent == IntentType.CODE:
+            self.handle_code_request(user_input)
+        elif intent == IntentType.REVIEW:
+            self.handle_review_request(user_input)
+        else:  # QUESTION or UNKNOWN
+            self.handle_question_request(user_input)
+
+        # Display summary
+        if self.verbosity != VerbosityLevel.QUIET:
+            self.tracker.display_summary(self.verbosity)
+
+    def handle_planning_request(self, user_input: str):
+        """Handle planning requests with user approval."""
+        console.print("\n[bold magenta]Planning Mode[/bold magenta]")
+        console.print("=" * 60)
+
+        self.tracker.add_action("Analyzing request and creating plan")
+
+        if self.verbosity >= VerbosityLevel.NORMAL:
+            console.print("[cyan]Creating implementation plan...[/cyan]")
+
+        # Generate plan using RAG
+        with Progress(
+            SpinnerColumn(),
+            TextColumn("[progress.description]{task.description}"),
+            console=console
+        ) as progress:
+            task = progress.add_task("Generating plan...", total=None)
+
+            try:
+                response = self.session.post(
+                    f"{self.base_url}/query",
+                    json={
+                        "query": f"Create a detailed implementation plan for: {user_input}",
+                        "auto_trigger": True
+                    },
+                    timeout=30
+                )
+
+                progress.update(task, completed=True)
+
+                if response.status_code == 200:
+                    result = response.json()
+                    plan = result['response']
+
+                    # Display plan
+                    console.print("\n[bold]Implementation Plan:[/bold]")
+                    console.print(Panel(Markdown(plan), border_style="magenta"))
+
+                    # Ask for approval
+                    approved = Confirm.ask("\nProceed with this plan?", default=True)
+
+                    if approved:
+                        console.print("[green]Plan approved. Proceeding with implementation...[/green]")
+                        self.tracker.add_action("Plan approved by user")
+                        # Now execute as a code request
+                        self.handle_code_request(user_input)
+                    else:
+                        console.print("[yellow]Plan cancelled by user[/yellow]")
+                        self.tracker.add_action("Plan cancelled by user")
+
+                else:
+                    console.print(f"[red]Error generating plan: {response.status_code}[/red]")
+
+            except Exception as e:
+                console.print(f"[red]Error: {e}[/red]")
+
+    def handle_debug_request(self, user_input: str):
+        """Handle debug requests."""
+        console.print("\n[bold red]Debug Mode[/bold red]")
+        console.print("=" * 60)
+
+        self.tracker.add_action("Analyzing error/bug")
+
+        # Check if error output is in the input
+        if len(user_input) > 200:  # Likely contains error output
+            error_output = user_input
+        else:
+            console.print("[yellow]Please paste your error output (press Ctrl+D when done):[/yellow]")
+            lines = []
+            try:
+                while True:
+                    line = input()
+                    lines.append(line)
+            except EOFError:
+                pass
+            error_output = "\n".join(lines) if lines else user_input
+
+        with Progress(
+            SpinnerColumn(),
+            TextColumn("[progress.description]{task.description}"),
+            console=console
+        ) as progress:
+            task = progress.add_task("Analyzing error...", total=None)
+
+            try:
+                response = self.session.post(
+                    f"{self.base_url}/debug",
+                    json={
+                        "error_output": error_output,
+                        "auto_extract_code": True
+                    },
+                    timeout=30
+                )
+
+                progress.update(task, completed=True)
+
+                if response.status_code == 200:
+                    result = response.json()
+
+                    # Show error context
+                    console.print("\n[bold]Error Location:[/bold]")
+                    error_ctx = result['error_context']
+                    console.print(f"  Type: {error_ctx['error_type']}")
+                    if error_ctx.get('file_path'):
+                        console.print(f"  File: {error_ctx['file_path']}:{error_ctx.get('line_number', '?')}")
+                    console.print(f"  Message: {error_ctx['error_message']}")
+
+                    # Show root cause
+                    console.print(f"\n[bold red]Root Cause:[/bold red]")
+                    console.print(Panel(result['root_cause'], border_style="red"))
+
+                    # Show fixes
+                    console.print(f"\n[bold green]Suggested Fixes:[/bold green]")
+                    for i, fix in enumerate(result['suggested_fixes'], 1):
+                        console.print(f"  {i}. {fix}")
+
+                    self.tracker.add_action("Error analyzed and fixes suggested")
+
+                else:
+                    console.print(f"[red]Error: {response.status_code}[/red]")
+
+            except Exception as e:
+                console.print(f"[red]Error: {e}[/red]")
+
+    def handle_code_request(self, user_input: str):
+        """Handle code implementation requests."""
+        console.print("\n[bold green]Code Mode[/bold green]")
+        console.print("=" * 60)
+
+        self.tracker.add_action("Implementing code changes")
+
+        # Use RAG to help with implementation
+        with Progress(
+            SpinnerColumn(),
+            TextColumn("[progress.description]{task.description}"),
+            console=console
+        ) as progress:
+            task = progress.add_task("Implementing...", total=None)
+
+            try:
+                response = self.session.post(
+                    f"{self.base_url}/query",
+                    json={
+                        "query": user_input,
+                        "auto_trigger": True
+                    },
+                    timeout=30
+                )
+
+                progress.update(task, completed=True)
+
+                if response.status_code == 200:
+                    result = response.json()
+
+                    console.print("\n[bold green]Implementation:[/bold green]")
+                    console.print(Panel(Markdown(result['response']), border_style="green"))
+
+                    self.tracker.add_action("Code implementation completed")
+
+                else:
+                    console.print(f"[red]Error: {response.status_code}[/red]")
+
+            except Exception as e:
+                console.print(f"[red]Error: {e}[/red]")
+
+    def handle_review_request(self, user_input: str):
+        """Handle code review requests."""
+        self.review_code()
+
+    def handle_question_request(self, user_input: str):
+        """Handle question/query requests."""
+        self.ask_question(query=user_input)
+
     def show_welcome(self):
         """Display welcome message."""
-        welcome_text = """
+        welcome_text = f"""
 # dt-cli Interactive Terminal
 
 Welcome to the **100% Open Source** RAG/MAF/LLM System!
 
-## Available Features:
-- **RAG Queries** - Ask questions about your codebase
-- **Debug Errors** - Analyze errors and get fix suggestions
-- **Code Review** - Automated code quality and security checks
-- **Knowledge Graph** - Explore code dependencies and relationships
-- **Evaluation** - Measure RAG quality with RAGAS metrics
-- **Hybrid Search** - Semantic + keyword search
+**Project Folder:** `{self.project_folder}`
+**Verbosity:** `{self.verbosity.value}`
 
-Type `help` for available commands or choose from the menu below.
+## What can I help you with?
+
+Just type your request naturally - I'll figure out what you need:
+- Ask questions about your codebase
+- Debug errors and get fix suggestions
+- Implement new features or refactor code
+- Review code for quality and security
+- Plan complex implementations
+
+## Slash Commands:
+- `/verbosity <quiet|normal|verbose>` - Control output detail
+- `/folder` - Change project folder
+- `/help` - Show this help
+- `/exit` - Exit the program
+
+Simply describe what you want in natural language!
 """
         console.print(Panel(Markdown(welcome_text), border_style="blue", box=box.DOUBLE))
 
-    def show_menu(self):
-        """Display main menu."""
-        table = Table(title="Main Menu", box=box.ROUNDED, border_style="cyan")
-        table.add_column("Option", style="cyan", justify="center")
-        table.add_column("Description", style="white")
-
-        options = [
-            ("1", "Ask a Question (RAG Query)"),
-            ("2", "Debug an Error"),
-            ("3", "Review Code"),
-            ("4", "Explore Knowledge Graph"),
-            ("5", "Evaluate RAG Quality"),
-            ("6", "Hybrid Search"),
-            ("7", "View Statistics"),
-            ("8", "Settings"),
-            ("9", "Help"),
-            ("0", "Exit")
-        ]
-
-        for opt, desc in options:
-            table.add_row(opt, desc)
-
-        console.print(table)
 
     def get_input_with_history(self, prompt_text: str, default: str = "") -> str:
         """Get user input with command history support."""
@@ -235,8 +687,11 @@ Type `help` for available commands or choose from the menu below.
 
     def ask_question(self, query: Optional[str] = None):
         """Handle RAG query."""
-        console.print("\n[bold cyan]Ask a Question[/bold cyan]", style="bold")
-        console.print("=" * 60)
+        if self.verbosity >= VerbosityLevel.NORMAL:
+            console.print("\n[bold cyan]Question Mode[/bold cyan]")
+            console.print("=" * 60)
+
+        self.tracker.add_action("Querying codebase")
 
         if not query:
             if self.prompt_session:
@@ -247,17 +702,6 @@ Type `help` for available commands or choose from the menu below.
         if not query.strip():
             console.print("[yellow]Empty query![/yellow]")
             return
-
-        # Ask for context files
-        add_files = Confirm.ask("Add specific files to context?", default=False)
-        context_files = []
-
-        if add_files:
-            while True:
-                file_path = Prompt.ask("  File path (or press Enter to finish)")
-                if not file_path:
-                    break
-                context_files.append(file_path)
 
         with Progress(
             SpinnerColumn(),
@@ -271,8 +715,7 @@ Type `help` for available commands or choose from the menu below.
                     f"{self.base_url}/query",
                     json={
                         "query": query,
-                        "auto_trigger": True,
-                        "context_files": context_files if context_files else None
+                        "auto_trigger": True
                     },
                     timeout=30
                 )
@@ -286,14 +729,17 @@ Type `help` for available commands or choose from the menu below.
                     console.print("\n[bold green]Answer:[/bold green]")
                     console.print(Panel(result['response'], border_style="green"))
 
-                    # Show metadata
-                    if 'auto_trigger' in result:
-                        trigger_info = result['auto_trigger']
-                        console.print(f"\n[dim]Intent: {trigger_info['intent']} (confidence: {trigger_info['confidence']:.0%})[/dim]")
-                        console.print(f"[dim]Actions: {', '.join(trigger_info['actions'])}[/dim]")
+                    # Show metadata in verbose mode
+                    if self.verbosity == VerbosityLevel.VERBOSE:
+                        if 'auto_trigger' in result:
+                            trigger_info = result['auto_trigger']
+                            console.print(f"\n[dim]Intent: {trigger_info['intent']} (confidence: {trigger_info['confidence']:.0%})[/dim]")
+                            console.print(f"[dim]Actions: {', '.join(trigger_info['actions'])}[/dim]")
 
-                    if 'context_used' in result:
-                        console.print(f"[dim]Contexts used: {result['context_used']}[/dim]")
+                        if 'context_used' in result:
+                            console.print(f"[dim]Contexts used: {result['context_used']}[/dim]")
+
+                    self.tracker.add_action("Query answered successfully")
 
                 else:
                     console.print(f"[red]Error: {response.status_code}[/red]")
@@ -385,8 +831,11 @@ Type `help` for available commands or choose from the menu below.
 
     def review_code(self):
         """Handle code review."""
-        console.print("\n[bold magenta]Review Code[/bold magenta]", style="bold")
-        console.print("=" * 60)
+        if self.verbosity >= VerbosityLevel.NORMAL:
+            console.print("\n[bold magenta]Review Code[/bold magenta]", style="bold")
+            console.print("=" * 60)
+
+        self.tracker.add_action("Reviewing code")
 
         # Get code input
         file_path = Prompt.ask("[bold]File path to review[/bold] (or press Enter to paste code)")
@@ -444,7 +893,8 @@ Type `help` for available commands or choose from the menu below.
                     score_color = "green" if score >= 7 else "yellow" if score >= 5 else "red"
 
                     console.print(f"\n[bold]Quality Score: [{score_color}]{score:.1f}/10[/{score_color}][/bold]")
-                    console.print(f"[dim]{result['summary']}[/dim]")
+                    if self.verbosity >= VerbosityLevel.NORMAL:
+                        console.print(f"[dim]{result['summary']}[/dim]")
 
                     # Show issues
                     if result['issues']:
@@ -471,28 +921,37 @@ Type `help` for available commands or choose from the menu below.
 
                                 console.print(f"\n[bold {sev_color}]{severity.upper()} ({len(by_severity[severity])})[/bold {sev_color}]")
 
-                                for issue in by_severity[severity][:5]:  # Show first 5
-                                    console.print(f"  - {issue['title']}")
-                                    if issue.get('line_number'):
-                                        console.print(f"    Line {issue['line_number']}: {issue['description']}")
-                                    else:
-                                        console.print(f"    {issue['description']}")
-                                    if issue.get('suggestion'):
-                                        console.print(f"    [dim]Fix: {issue['suggestion']}[/dim]")
+                                # In quiet mode, only show critical and high
+                                if self.verbosity == VerbosityLevel.QUIET and severity not in ['critical', 'high']:
+                                    continue
 
-                                if len(by_severity[severity]) > 5:
-                                    console.print(f"  [dim]... and {len(by_severity[severity]) - 5} more[/dim]")
+                                max_show = 5 if self.verbosity >= VerbosityLevel.NORMAL else 3
+                                for issue in by_severity[severity][:max_show]:
+                                    console.print(f"  - {issue['title']}")
+                                    if self.verbosity >= VerbosityLevel.NORMAL:
+                                        if issue.get('line_number'):
+                                            console.print(f"    Line {issue['line_number']}: {issue['description']}")
+                                        else:
+                                            console.print(f"    {issue['description']}")
+                                        if issue.get('suggestion'):
+                                            console.print(f"    [dim]Fix: {issue['suggestion']}[/dim]")
+
+                                if len(by_severity[severity]) > max_show:
+                                    console.print(f"  [dim]... and {len(by_severity[severity]) - max_show} more[/dim]")
 
                     else:
                         console.print("\n[bold green]No issues found![/bold green]")
 
-                    # Show metrics
-                    console.print(f"\n[bold]Metrics:[/bold]")
-                    metrics = result['metrics']
-                    console.print(f"  Total lines: {metrics['total_lines']}")
-                    console.print(f"  Code lines: {metrics['code_lines']}")
-                    console.print(f"  Comment lines: {metrics['comment_lines']}")
-                    console.print(f"  Issues: {metrics['total_issues']}")
+                    # Show metrics in normal/verbose mode
+                    if self.verbosity >= VerbosityLevel.NORMAL:
+                        console.print(f"\n[bold]Metrics:[/bold]")
+                        metrics = result['metrics']
+                        console.print(f"  Total lines: {metrics['total_lines']}")
+                        console.print(f"  Code lines: {metrics['code_lines']}")
+                        console.print(f"  Comment lines: {metrics['comment_lines']}")
+                        console.print(f"  Issues: {metrics['total_issues']}")
+
+                    self.tracker.add_action("Code review completed")
 
                 else:
                     console.print(f"[red]Error: {response.status_code}[/red]")
@@ -502,31 +961,69 @@ Type `help` for available commands or choose from the menu below.
 
     def show_help(self):
         """Show help information."""
-        help_text = """
+        help_text = f"""
 # dt-cli Help
 
-## Commands
+## Intelligent Interface
 
-- **Ask Question**: Query your codebase using RAG
-- **Debug Error**: Analyze errors and get automated fix suggestions
-- **Review Code**: Get automated code quality and security analysis
-- **Explore Graph**: Navigate code dependencies and relationships
-- **Evaluate**: Measure RAG quality using RAGAS metrics
-- **Hybrid Search**: Combine semantic and keyword search
-- **View Stats**: See system statistics
-- **Settings**: Configure system settings
+dt-cli automatically detects what you want to do based on your natural language input.
+No need to select options or specify commands!
+
+## What You Can Do
+
+### Ask Questions
+- "What does the authentication module do?"
+- "Where is user validation handled?"
+- "Explain how the caching system works"
+
+### Debug Errors
+- "Fix this error: ImportError: No module named 'requests'"
+- "Debug the failing test in test_api.py"
+- Paste any error/traceback and I'll analyze it
+
+### Implement Code
+- "Add a new endpoint for user logout"
+- "Implement caching for database queries"
+- "Refactor the authentication function to use OAuth"
+
+### Review Code
+- "Review the code in auth.py"
+- "Check api_handler.py for security issues"
+- "Analyze code quality in my latest changes"
+
+### Plan Features
+- "Plan how to add rate limiting"
+- "Design a caching strategy"
+- "What's the best approach to add webhooks?"
+
+## Slash Commands
+
+- **`/verbosity <level>`** - Set output detail level
+  - `quiet`: Minimal output
+  - `normal`: Standard output (default)
+  - `verbose`: Detailed output with explanations
+
+- **`/folder`** - View or change project folder
+- **`/help`** - Show this help message
+- **`/exit`** - Exit the program
+
+## Settings
+
+- **Project Folder:** `{self.project_folder}`
+- **Verbosity:** `{self.verbosity.value}`
+- **Server URL:** `{self.base_url}`
 
 ## Tips
 
-- Use **auto-triggering** for seamless queries (no need to specify /rag-query)
-- Build the **knowledge graph** first for dependency analysis
-- Use **code review** before committing to catch issues early
-- Run **debug** on test failures for instant analysis
+- Just type naturally - the AI figures out what you need
+- Use `/verbosity verbose` to see detailed intent classification
+- Planning mode asks for approval before executing
+- All changes are tracked and summarized
 
 ## Configuration
 
-Server URL: `http://localhost:8765`
 Config file: `llm-config.yaml`
+History file: `~/.dt_cli_history`
 
 ## Documentation
 
@@ -534,22 +1031,9 @@ See README.md and PHASE*.md files for detailed documentation.
 """
         console.print(Panel(Markdown(help_text), border_style="blue"))
 
-    def intelligent_mode(self, user_input: str):
+    def run(self):
         """
-        Intelligent mode: analyze user input and route to appropriate function.
-        Bypasses menu and goes directly to RAG/MAF.
-        """
-        user_input_lower = user_input.lower().strip()
-
-        # Directly execute RAG query
-        self.ask_question(query=user_input)
-
-    def run(self, intelligent: bool = False):
-        """
-        Run the interactive CLI.
-
-        Args:
-            intelligent: If True, skip menu and go straight to intelligent mode
+        Run the interactive CLI with intelligent processing.
         """
         # Check server and auto-start if needed
         if not self.check_server():
@@ -565,73 +1049,51 @@ See README.md and PHASE*.md files for detailed documentation.
                 console.print("  [cyan]python src/mcp_server/standalone_server.py[/cyan]")
                 return
 
+        # Select project folder
+        self.select_project_folder()
+
         # Show welcome
         self.show_welcome()
 
-        # Intelligent mode: get user input and route directly
-        if intelligent:
-            console.print("\n[bold cyan]Intelligent Mode[/bold cyan]")
-            console.print("[dim]Enter your question and I'll automatically use RAG/MAF as needed.[/dim]\n")
+        # Main loop with intelligent processing
+        while True:
+            try:
+                # Get user input
+                if self.prompt_session:
+                    user_input = self.get_input_with_history("\n>")
+                else:
+                    user_input = input("\n> ").strip()
 
-            while True:
-                try:
-                    if self.prompt_session:
-                        user_input = self.get_input_with_history("\n[bold]Your question (or 'exit' to quit)[/bold]")
-                    else:
-                        user_input = Prompt.ask("\n[bold]Your question (or 'exit' to quit)[/bold]")
+                if not user_input:
+                    continue
 
-                    if user_input.lower() in ['exit', 'quit', 'q']:
+                # Check for slash commands
+                if user_input.startswith('/'):
+                    should_continue = self.handle_slash_command(user_input)
+                    if not should_continue:
                         console.print("\n[bold]Goodbye![/bold]")
                         break
+                    continue
 
-                    if user_input.strip():
-                        self.intelligent_mode(user_input)
-
-                except KeyboardInterrupt:
-                    console.print("\n\n[bold]Goodbye![/bold]")
-                    break
-                except Exception as e:
-                    console.print(f"[red]Error: {e}[/red]")
-
-            return
-
-        # Regular menu mode
-        while True:
-            console.print()
-            self.show_menu()
-
-            try:
-                choice = Prompt.ask("\n[bold]Choose an option[/bold]", default="1")
-
-                if choice == "1":
-                    self.ask_question()
-                elif choice == "2":
-                    self.debug_error()
-                elif choice == "3":
-                    self.review_code()
-                elif choice == "4":
-                    console.print("[yellow]Knowledge Graph feature - use server API directly[/yellow]")
-                elif choice == "5":
-                    console.print("[yellow]Evaluation feature - use server API directly[/yellow]")
-                elif choice == "6":
-                    console.print("[yellow]Hybrid Search feature - use server API directly[/yellow]")
-                elif choice == "7":
-                    console.print("[yellow]Statistics feature - use server API directly[/yellow]")
-                elif choice == "8":
-                    console.print("[yellow]Settings coming soon![/yellow]")
-                elif choice == "9":
-                    self.show_help()
-                elif choice == "0":
+                # Check for exit keywords
+                if user_input.lower() in ['exit', 'quit', 'q']:
                     console.print("\n[bold]Goodbye![/bold]")
                     break
-                else:
-                    console.print("[yellow]Invalid option![/yellow]")
+
+                # Process with intelligent routing
+                self.process_user_input(user_input)
 
             except KeyboardInterrupt:
                 console.print("\n\n[bold]Goodbye![/bold]")
                 break
+            except EOFError:
+                console.print("\n\n[bold]Goodbye![/bold]")
+                break
             except Exception as e:
                 console.print(f"[red]Error: {e}[/red]")
+                if self.verbosity == VerbosityLevel.VERBOSE:
+                    import traceback
+                    console.print(f"[dim]{traceback.format_exc()}[/dim]")
 
     def __del__(self):
         """Cleanup: stop server if we started it."""
@@ -647,7 +1109,9 @@ def main():
     """Main entry point."""
     import argparse
 
-    parser = argparse.ArgumentParser(description="dt-cli Interactive Terminal")
+    parser = argparse.ArgumentParser(
+        description="dt-cli Interactive Terminal - Intelligent AI Assistant for Codebases"
+    )
     parser.add_argument(
         "--server",
         default="http://localhost:8765",
@@ -659,10 +1123,11 @@ def main():
         help="Don't auto-start server if not running"
     )
     parser.add_argument(
-        "--intelligent",
-        "-i",
-        action="store_true",
-        help="Use intelligent mode (skip menu, go directly to RAG)"
+        "--verbosity",
+        "-v",
+        choices=["quiet", "normal", "verbose"],
+        default="normal",
+        help="Set verbosity level (default: normal)"
     )
 
     args = parser.parse_args()
@@ -671,7 +1136,8 @@ def main():
         base_url=args.server,
         auto_start_server=not args.no_auto_start
     )
-    cli.run(intelligent=args.intelligent)
+    cli.verbosity = VerbosityLevel(args.verbosity)
+    cli.run()
 
 
 if __name__ == "__main__":
