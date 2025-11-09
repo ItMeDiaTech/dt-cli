@@ -854,11 +854,21 @@ class DTCliInteractive:
 
         self.tracker.add_action("Analyzing error/bug")
 
+        # Check if input contains actual error patterns
+        error_indicators = [
+            r'Traceback', r'Error:', r'Exception:', r'^\s*File\s+"',
+            r'at\s+\S+\.\S+\(.*:\d+:\d+\)', r'^\s*\^\s*$',  # Python/JS error patterns
+            r'\w+Error:', r'\w+Exception:', r'FAILED', r'AssertionError'
+        ]
+        has_actual_error = any(re.search(pattern, user_input, re.MULTILINE | re.IGNORECASE)
+                              for pattern in error_indicators)
+
         # Intelligently gather error context
         error_output = user_input
+        use_query_endpoint = False  # Flag to use /query instead of /debug
 
-        # If input is short, try to gather context intelligently
-        if len(user_input) < 200:
+        # If input is short and doesn't contain actual error, try to gather context intelligently
+        if len(user_input) < 200 and not has_actual_error:
             if self.verbosity >= VerbosityLevel.NORMAL:
                 console.print("[cyan]Analyzing request and gathering context...[/cyan]")
 
@@ -893,72 +903,122 @@ class DTCliInteractive:
                 error_output = f"User request: {user_input}\n\n" + "\n\n".join(error_sources[:3])  # Limit to 3 sources
                 if self.verbosity >= VerbosityLevel.VERBOSE:
                     console.print(f"[dim]Found {len(error_sources)} recent log file(s)[/dim]")
+            else:
+                # No logs found and input is just a description - use query endpoint instead
+                # This handles cases like "debug the login error" where there's no actual error output
+                if self.verbosity >= VerbosityLevel.VERBOSE:
+                    console.print("[dim]No recent logs found, using intelligent query mode[/dim]")
+                use_query_endpoint = True
+                error_output = f"Help me debug and fix this issue: {user_input}. Analyze the codebase to identify the problem and suggest fixes."
 
-        with Progress(
-            SpinnerColumn(),
-            TextColumn("[progress.description]{task.description}"),
-            console=console
-        ) as progress:
-            task = progress.add_task("Analyzing error...", total=None)
+        # Use appropriate endpoint based on what we have
+        if use_query_endpoint:
+            # Use /query endpoint for description-based debug requests
+            with Progress(
+                SpinnerColumn(),
+                TextColumn("[progress.description]{task.description}"),
+                console=console
+            ) as progress:
+                task = progress.add_task("Analyzing issue...", total=None)
 
-            try:
-                self.log_api_call("/debug", "POST", self.timeout_normal, "Analyzing error and suggesting fixes")
-                response = self.session.post(
-                    f"{self.base_url}/debug",
-                    json={
-                        "error_output": error_output,
-                        "auto_extract_code": True
-                    },
-                    timeout=self.timeout_normal
-                )
+                try:
+                    payload = self._build_enriched_query_payload(error_output, intent='debug')
+                    self.log_api_call("/query", "POST", self.timeout_normal, "Analyzing issue intelligently")
+                    response = self.session.post(
+                        f"{self.base_url}/query",
+                        json=payload,
+                        timeout=self.timeout_normal
+                    )
 
-                progress.update(task, completed=True)
+                    progress.update(task, completed=True)
 
-                if response.status_code == 200:
-                    result = response.json()
+                    if response.status_code == 200:
+                        result = response.json()
+                        console.print("\n[bold green]Analysis:[/bold green]")
+                        console.print(Panel(Markdown(result['response']), border_style="green"))
+                        self.tracker.add_action("Issue analyzed intelligently")
+                    else:
+                        console.print(f"[red]Error: {response.status_code}[/red]")
+                        try:
+                            error_detail = response.json()
+                            if 'detail' in error_detail:
+                                console.print(f"[red]Details: {error_detail['detail']}[/red]")
+                        except:
+                            pass
 
-                    # Show error context
-                    console.print("\n[bold]Error Location:[/bold]")
-                    error_ctx = result['error_context']
-                    console.print(f"  Type: {error_ctx['error_type']}")
-                    if error_ctx.get('file_path'):
-                        console.print(f"  File: {error_ctx['file_path']}:{error_ctx.get('line_number', '?')}")
-                    console.print(f"  Message: {error_ctx['error_message']}")
-
-                    # Show root cause
-                    console.print(f"\n[bold red]Root Cause:[/bold red]")
-                    console.print(Panel(result['root_cause'], border_style="red"))
-
-                    # Show fixes
-                    console.print(f"\n[bold green]Suggested Fixes:[/bold green]")
-                    for i, fix in enumerate(result['suggested_fixes'], 1):
-                        console.print(f"  {i}. {fix}")
-
-                    self.tracker.add_action("Error analyzed and fixes suggested")
-
-                elif response.status_code == 404:
-                    console.print("[red]Error: The /debug endpoint was not found.[/red]")
-                    console.print("\n[yellow]This could mean:[/yellow]")
-                    console.print("  1. The server is not running properly")
-                    console.print("  2. The server failed to initialize completely")
-                    console.print(f"\n[cyan]Current server URL: {self.base_url}[/cyan]")
-                    console.print("\n[yellow]Try restarting the server:[/yellow]")
+                except requests.exceptions.ConnectionError:
+                    console.print(f"[red]Connection Error: Could not connect to server at {self.base_url}[/red]")
+                    console.print("[yellow]The server may not be running. Try starting it with:[/yellow]")
                     console.print("  [cyan]python3 src/mcp_server/standalone_server.py[/cyan]")
-                else:
-                    console.print(f"[red]Error: {response.status_code}[/red]")
-                    try:
-                        error_detail = response.json()
-                        if 'detail' in error_detail:
-                            console.print(f"[red]Details: {error_detail['detail']}[/red]")
-                    except:
-                        pass
+                except Exception as e:
+                    console.print(f"[red]Error: {e}[/red]")
+        else:
+            # Use /debug endpoint for actual error output
+            with Progress(
+                SpinnerColumn(),
+                TextColumn("[progress.description]{task.description}"),
+                console=console
+            ) as progress:
+                task = progress.add_task("Analyzing error...", total=None)
 
-            except requests.exceptions.ConnectionError:
-                console.print(f"[red]Connection Error: Could not connect to server at {self.base_url}[/red]")
-                console.print("[yellow]The server may not be running. Try starting it with:[/yellow]")
-                console.print("  [cyan]python3 src/mcp_server/standalone_server.py[/cyan]")
-            except Exception as e:
-                console.print(f"[red]Error: {e}[/red]")
+                try:
+                    self.log_api_call("/debug", "POST", self.timeout_normal, "Analyzing error and suggesting fixes")
+                    response = self.session.post(
+                        f"{self.base_url}/debug",
+                        json={
+                            "error_output": error_output,
+                            "auto_extract_code": True
+                        },
+                        timeout=self.timeout_normal
+                    )
+
+                    progress.update(task, completed=True)
+
+                    if response.status_code == 200:
+                        result = response.json()
+
+                        # Show error context
+                        console.print("\n[bold]Error Location:[/bold]")
+                        error_ctx = result['error_context']
+                        console.print(f"  Type: {error_ctx['error_type']}")
+                        if error_ctx.get('file_path'):
+                            console.print(f"  File: {error_ctx['file_path']}:{error_ctx.get('line_number', '?')}")
+                        console.print(f"  Message: {error_ctx['error_message']}")
+
+                        # Show root cause
+                        console.print(f"\n[bold red]Root Cause:[/bold red]")
+                        console.print(Panel(result['root_cause'], border_style="red"))
+
+                        # Show fixes
+                        console.print(f"\n[bold green]Suggested Fixes:[/bold green]")
+                        for i, fix in enumerate(result['suggested_fixes'], 1):
+                            console.print(f"  {i}. {fix}")
+
+                        self.tracker.add_action("Error analyzed and fixes suggested")
+
+                    elif response.status_code == 404:
+                        console.print("[red]Error: The /debug endpoint was not found.[/red]")
+                        console.print("\n[yellow]This could mean:[/yellow]")
+                        console.print("  1. The server is not running properly")
+                        console.print("  2. The server failed to initialize completely")
+                        console.print(f"\n[cyan]Current server URL: {self.base_url}[/cyan]")
+                        console.print("\n[yellow]Try restarting the server:[/yellow]")
+                        console.print("  [cyan]python3 src/mcp_server/standalone_server.py[/cyan]")
+                    else:
+                        console.print(f"[red]Error: {response.status_code}[/red]")
+                        try:
+                            error_detail = response.json()
+                            if 'detail' in error_detail:
+                                console.print(f"[red]Details: {error_detail['detail']}[/red]")
+                        except:
+                            pass
+
+                except requests.exceptions.ConnectionError:
+                    console.print(f"[red]Connection Error: Could not connect to server at {self.base_url}[/red]")
+                    console.print("[yellow]The server may not be running. Try starting it with:[/yellow]")
+                    console.print("  [cyan]python3 src/mcp_server/standalone_server.py[/cyan]")
+                except Exception as e:
+                    console.print(f"[red]Error: {e}[/red]")
 
     def handle_code_request(self, user_input: str):
         """Handle code implementation requests."""
