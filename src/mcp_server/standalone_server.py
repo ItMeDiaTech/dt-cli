@@ -183,9 +183,31 @@ class StandaloneMCPServer:
         # Initialize LLM provider
         logger.info("Initializing LLM provider...")
         llm_config = self.config.get_llm_config()
-        self.llm = LLMProviderFactory.create_from_config(llm_config)
 
-        logger.info(f"Using LLM provider: {self.llm}")
+        try:
+            self.llm = LLMProviderFactory.create_from_config(llm_config)
+
+            # Check if LLM is actually healthy
+            if self.llm and self.llm.check_health():
+                logger.info(f"Using LLM provider: {self.llm}")
+                self.llm_available = True
+            else:
+                provider_type = llm_config.get('provider', 'unknown')
+                logger.warning(
+                    f"LLM provider '{provider_type}' initialized but health check failed. "
+                    f"The system will operate with limited functionality (rule-based checks only)."
+                )
+                self.llm_available = False
+        except Exception as e:
+            provider_type = llm_config.get('provider', 'unknown')
+            logger.error(f"Failed to initialize LLM provider '{provider_type}': {e}")
+            logger.warning(
+                f"Continuing without LLM support. "
+                f"Rule-based code review and debugging will still work. "
+                f"To enable full LLM features, install and start {provider_type}."
+            )
+            self.llm = None
+            self.llm_available = False
 
         # Initialize RAG system
         logger.info("Initializing RAG system...")
@@ -249,18 +271,24 @@ class StandaloneMCPServer:
         @self.app.get("/")
         async def root():
             """Root endpoint with server info."""
+            provider_info = self.llm.get_info() if self.llm and self.llm_available else {
+                "provider": "none",
+                "status": "unavailable",
+                "message": "LLM provider not available. Rule-based checks still functional."
+            }
             return {
                 "name": "dt-cli Standalone Server",
                 "version": "2.0.0",
                 "description": "100% Open Source RAG/MAF/LLM Server",
                 "status": "running",
-                "provider": self.llm.get_info()
+                "llm_available": self.llm_available,
+                "provider": provider_info
             }
 
         @self.app.get("/health")
         async def health():
             """Health check endpoint."""
-            llm_healthy = self.llm.check_health()
+            llm_healthy = self.llm.check_health() if self.llm else False
             rag_healthy = True  # Could add RAG health check
 
             # Check if key endpoints are registered
@@ -272,9 +300,21 @@ class StandaloneMCPServer:
             }
             endpoints_healthy = all(key_endpoints.values())
 
+            # Determine overall status
+            # Server is "healthy" if endpoints work, even without LLM
+            # Server is "degraded" if LLM is unavailable but endpoints work
+            # Server is "unhealthy" if endpoints are missing
+            if not endpoints_healthy:
+                status = "unhealthy"
+            elif not llm_healthy:
+                status = "degraded"
+            else:
+                status = "healthy"
+
             return {
-                "status": "healthy" if llm_healthy and rag_healthy and endpoints_healthy else "degraded",
+                "status": status,
                 "llm": "healthy" if llm_healthy else "unhealthy",
+                "llm_available": self.llm_available,
                 "rag": "healthy" if rag_healthy else "unhealthy",
                 "endpoints": key_endpoints
             }
@@ -573,15 +613,34 @@ class StandaloneMCPServer:
                     language=request.language
                 )
 
-                return review.to_dict()
+                result = review.to_dict()
+
+                # Add LLM availability warning if applicable
+                if not self.llm_available:
+                    result['warning'] = (
+                        "LLM provider is not available. "
+                        "Review includes rule-based checks only. "
+                        "For advanced AI-powered analysis, please install and configure an LLM provider."
+                    )
+                    result['llm_used'] = False
+                else:
+                    result['llm_used'] = True
+
+                return result
 
             except Exception as e:
                 import traceback
                 error_trace = traceback.format_exc()
                 logger.error(f"Review error: {e}\n{error_trace}")
+
+                # Provide more helpful error message
+                error_msg = f"{type(e).__name__}: {str(e)}"
+                if not self.llm_available and "llm" in str(e).lower():
+                    error_msg += " (Note: LLM provider is not available)"
+
                 raise HTTPException(
                     status_code=500,
-                    detail=f"{type(e).__name__}: {str(e)}"
+                    detail=error_msg
                 )
 
         @self.app.post("/graph/build")
