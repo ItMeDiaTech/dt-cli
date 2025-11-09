@@ -899,32 +899,75 @@ class DTCliInteractive:
 
     def show_welcome(self):
         """Display welcome message."""
+        # Get session info
+        session_info = ""
+        if self.session_history:
+            stats = self.session_history.get_statistics()
+            if stats['current_session_active']:
+                session_info = f"\n**Session:** Active ({stats['current_session_turns']} turns this session)"
+                if stats['archived_sessions'] > 0:
+                    session_info += f" | {stats['archived_sessions']} archived sessions"
+
         welcome_text = f"""
-# dt-cli Interactive Terminal
+# dt-cli Intelligent Interactive CLI 🚀
 
-Welcome to the **100% Open Source** RAG/MAF/LLM System!
+Welcome to the **100% Open Source** RAG/MAF/LLM System with AI-powered memory!
 
-**Project Folder:** `{self.project_folder}`
-**Verbosity:** `{self.verbosity.value}`
+**Project:** `{self.project_folder}`
+**Verbosity:** `{self.verbosity.to_string()}`{session_info}
+
+## ✨ New Intelligent Features
+
+🧠 **Hierarchical Session Memory** - Your conversations persist across sessions
+- Remember context from days/weeks ago
+- Automatic compression of older conversations
+- Important discussions never forgotten
+
+🎯 **Context-Aware Queries** - Automatically includes relevant files
+- Smart file discovery from your project
+- Keyword-based relevance matching
+- Up to 20 context files sent per query
+
+💬 **Natural Language Interface** - Just type what you need
+- No menu navigation required
+- Intent auto-detection (debug, code, review, question)
+- Follow-up questions understand context
 
 ## What can I help you with?
 
-Just type your request naturally - I'll figure out what you need:
-- Ask questions about your codebase
-- Debug errors and get fix suggestions
-- Implement new features or refactor code
-- Review code for quality and security
-- Plan complex implementations
+**Ask Questions:**
+- "Where is authentication handled?"
+- "How does the caching system work?"
 
-## Slash Commands:
+**Debug Errors:**
+- "Debug this ImportError"
+- "Fix the failing tests"
+
+**Review & Implement:**
+- "Review codebase and find any errors"
+- "Add logging to the API endpoints"
+
+**Plan Features:**
+- "Plan how to add rate limiting"
+- "Design a caching strategy"
+
+## Power User Commands
+
+**Memory & Session:**
+- `/history` - View current session with full context
+- `/sessions` - List all sessions (current + archived)
+- `/stats` - Show memory usage statistics
+- `/clearsession` - Clear all history
+
+**Settings:**
 - `/verbosity <quiet|normal|verbose>` - Control output detail
 - `/folder` - Change project folder
-- `/help` - Show this help
-- `/exit` - Exit the program
+- `/help` - Comprehensive help
+- `/exit` - Save session and exit
 
-Simply describe what you want in natural language!
+**Tip:** Your first query automatically discovers project files for better context!
 """
-        console.print(Panel(Markdown(welcome_text), border_style="blue", box=box.DOUBLE))
+        console.print(Panel(Markdown(welcome_text), border_style="cyan", box=box.DOUBLE))
 
 
     def get_input_with_history(self, prompt_text: str, default: str = "") -> str:
