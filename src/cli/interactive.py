@@ -416,15 +416,18 @@ class DTCliInteractive:
             health_data = response.json()
             if health_data.get('status') == 'degraded':
                 # Server is running but not fully healthy
-                console.print("[yellow]Server is running but degraded:[/yellow]")
-                if 'endpoints' in health_data:
-                    missing = [k for k, v in health_data['endpoints'].items() if not v]
-                    if missing:
-                        console.print(f"  Missing endpoints: {', '.join(missing)}")
-                if health_data.get('llm') == 'unhealthy':
-                    console.print("  LLM provider is unhealthy")
-                console.print("[yellow]Server may need to be restarted[/yellow]")
-                return False
+                # This is OK - the server can still function
+                if self.verbosity >= VerbosityLevel.NORMAL:
+                    console.print("[yellow]Server is running but degraded:[/yellow]")
+                    if 'endpoints' in health_data:
+                        missing = [k for k, v in health_data['endpoints'].items() if not v]
+                        if missing:
+                            console.print(f"  Missing endpoints: {', '.join(missing)}")
+                    if health_data.get('llm') == 'unhealthy':
+                        console.print("  [yellow]LLM provider is unhealthy (Ollama may not be running)[/yellow]")
+                        console.print("  [dim]To fix: Start Ollama with 'ollama serve' or install it from https://ollama.ai[/dim]")
+                # Return True - server is running even if degraded
+                return True
 
             return True
         except:
