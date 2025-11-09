@@ -39,6 +39,14 @@ from dataclasses import dataclass, field
 from datetime import datetime
 import glob as glob_module
 
+# Import session history manager
+try:
+    from .session_history import SessionHistoryManager
+    SESSION_HISTORY_AVAILABLE = True
+except ImportError:
+    SESSION_HISTORY_AVAILABLE = False
+    SessionHistoryManager = None
+
 try:
     from prompt_toolkit import PromptSession
     from prompt_toolkit.history import FileHistory
@@ -384,6 +392,12 @@ class DTCliInteractive:
         self.tracker = SummaryTracker()
         self.conversation_context = ConversationContext()
 
+        # Initialize session history manager
+        if SESSION_HISTORY_AVAILABLE:
+            self.session_history = SessionHistoryManager()
+        else:
+            self.session_history = None
+
         # Setup command history
         if PROMPT_TOOLKIT_AVAILABLE:
             history_file = os.path.expanduser("~/.dt_cli_history")
@@ -525,6 +539,12 @@ class DTCliInteractive:
             console.print("[cyan]Discovering project files for enhanced context...[/cyan]")
         self._discover_project_files()
 
+        # Start session history for this project
+        if self.session_history:
+            session_id = self.session_history.start_session(str(self.project_folder))
+            if self.verbosity == VerbosityLevel.VERBOSE:
+                console.print(f"[dim]Started session: {session_id}[/dim]")
+
     def handle_slash_command(self, command: str) -> bool:
         """
         Handle slash commands.
@@ -565,10 +585,60 @@ class DTCliInteractive:
                 self.select_project_folder()
             return True
 
+        elif cmd == "/history":
+            self.show_session_history()
+            return True
+
+        elif cmd == "/sessions":
+            self.show_all_sessions()
+            return True
+
+        elif cmd == "/clearsession":
+            if Confirm.ask("[bold red]Clear ALL session history?[/bold red] This cannot be undone!", default=False):
+                if self.session_history:
+                    self.session_history.clear_all_history()
+                    console.print("[green]Session history cleared[/green]")
+                else:
+                    console.print("[yellow]Session history not available[/yellow]")
+            return True
+
+        elif cmd == "/stats":
+            self.show_session_stats()
+            return True
+
         else:
             console.print(f"[red]Unknown command: {cmd}[/red]")
-            console.print("Available commands: /verbosity, /help, /folder, /exit")
+            console.print("Available commands: /verbosity, /help, /folder, /history, /sessions, /stats, /clearsession, /exit")
             return True
+
+    def _calculate_importance_score(self, intent: IntentType, confidence: float) -> float:
+        """
+        Calculate importance score for a conversation turn.
+
+        Used for selective retention in hierarchical memory.
+
+        Args:
+            intent: Detected intent
+            confidence: Confidence score
+
+        Returns:
+            Importance score (0.0-1.0)
+        """
+        # Base score from confidence
+        score = confidence
+
+        # Boost certain intents
+        importance_boost = {
+            IntentType.DEBUG: 0.2,   # Debugging sessions are important
+            IntentType.CODE: 0.15,   # Code changes are important
+            IntentType.PLAN: 0.15,   # Plans are important
+            IntentType.REVIEW: 0.1,  # Reviews are moderately important
+        }
+
+        boost = importance_boost.get(intent, 0.0)
+        score = min(1.0, score + boost)
+
+        return score
 
     def _build_enriched_query_payload(self, query: str, intent: Optional[str] = None) -> Dict[str, Any]:
         """
@@ -643,6 +713,12 @@ class DTCliInteractive:
 
         # Update conversation context
         self.conversation_context.add_turn(user_input, intent.value, result_summary)
+
+        # Add to session history with hierarchical memory
+        if self.session_history:
+            # Calculate importance score based on intent
+            importance_score = self._calculate_importance_score(intent, confidence)
+            self.session_history.add_turn(user_input, intent.value, result_summary, importance_score)
 
         # Display summary
         if self.verbosity != VerbosityLevel.QUIET:
@@ -1211,6 +1287,83 @@ Simply describe what you want in natural language!
             except Exception as e:
                 console.print(f"[red]Error: {e}[/red]")
 
+    def show_session_history(self):
+        """Display current session history."""
+        if not self.session_history:
+            console.print("[yellow]Session history not available[/yellow]")
+            return
+
+        console.print("\n[bold cyan]Current Session History[/bold cyan]")
+        console.print("=" * 60)
+
+        context = self.session_history.get_full_context_for_llm(include_summarized=True)
+
+        if not context:
+            console.print("[dim]No conversation history yet[/dim]")
+            return
+
+        console.print(Panel(context, border_style="cyan", title="Session Context"))
+
+    def show_all_sessions(self):
+        """Display all sessions (current and archived)."""
+        if not self.session_history:
+            console.print("[yellow]Session history not available[/yellow]")
+            return
+
+        console.print("\n[bold cyan]All Sessions[/bold cyan]")
+        console.print("=" * 60)
+
+        # Show current session
+        if self.session_history.current_session:
+            session = self.session_history.current_session
+            console.print(f"\n[bold green]Current Session (Active)[/bold green]")
+            console.print(f"  ID: {session.session_id}")
+            console.print(f"  Project: {session.project_folder}")
+            console.print(f"  Started: {session.start_time}")
+            console.print(f"  Turns: {session.total_turns}")
+            console.print(f"  Last Activity: {session.last_activity}")
+
+        # Show archived sessions
+        if self.session_history.archived_sessions:
+            console.print(f"\n[bold]Archived Sessions ({len(self.session_history.archived_sessions)})[/bold]")
+
+            for session in reversed(self.session_history.archived_sessions[-5:]):  # Show last 5
+                console.print(f"\n  Session: {session.session_id}")
+                console.print(f"    Project: {session.project_folder}")
+                console.print(f"    Duration: {session.start_time} → {session.last_activity}")
+                console.print(f"    Turns: {session.total_turns}")
+
+                if session.session_summary:
+                    console.print(f"    Summary: {session.session_summary.summary}")
+                    if session.session_summary.key_topics:
+                        console.print(f"    Topics: {', '.join(session.session_summary.key_topics)}")
+        else:
+            console.print("\n[dim]No archived sessions[/dim]")
+
+    def show_session_stats(self):
+        """Display session statistics."""
+        if not self.session_history:
+            console.print("[yellow]Session history not available[/yellow]")
+            return
+
+        stats = self.session_history.get_statistics()
+
+        console.print("\n[bold cyan]Session Statistics[/bold cyan]")
+        console.print("=" * 60)
+
+        table = Table(show_header=True, header_style="bold magenta")
+        table.add_column("Metric", style="cyan")
+        table.add_column("Value", style="green")
+
+        table.add_row("Current Session Active", "Yes" if stats['current_session_active'] else "No")
+        table.add_row("Current Session Turns", str(stats['current_session_turns']))
+        table.add_row("Archived Sessions", str(stats['archived_sessions']))
+        table.add_row("Total Archived Turns", str(stats['total_archived_turns']))
+        table.add_row("Total All Turns", str(stats['total_all_turns']))
+        table.add_row("Storage File", stats['storage_file'])
+
+        console.print(table)
+
     def show_help(self):
         """Show help information."""
         help_text = f"""
@@ -1256,6 +1409,10 @@ No need to select options or specify commands!
   - `verbose`: Detailed output with explanations
 
 - **`/folder`** - View or change project folder
+- **`/history`** - Show current session history (hierarchical memory)
+- **`/sessions`** - View all sessions (current and archived)
+- **`/stats`** - Show session statistics
+- **`/clearsession`** - Clear ALL session history (irreversible!)
 - **`/help`** - Show this help message
 - **`/exit`** - Exit the program
 
@@ -1348,7 +1505,15 @@ See README.md and PHASE*.md files for detailed documentation.
                     console.print(f"[dim]{traceback.format_exc()}[/dim]")
 
     def __del__(self):
-        """Cleanup: stop server if we started it."""
+        """Cleanup: stop server and close session."""
+        # Close session history
+        if self.session_history:
+            try:
+                self.session_history.close_session(generate_summary=True)
+            except:
+                pass
+
+        # Stop server if we started it
         if self.server_process:
             try:
                 self.server_process.terminate()
