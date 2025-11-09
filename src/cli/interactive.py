@@ -37,6 +37,7 @@ from pathlib import Path
 from enum import Enum, IntEnum
 from dataclasses import dataclass, field
 from datetime import datetime
+import glob as glob_module
 
 try:
     from prompt_toolkit import PromptSession
@@ -93,6 +94,79 @@ class FileChange:
     before_snippet: Optional[str] = None
     after_snippet: Optional[str] = None
     timestamp: datetime = field(default_factory=datetime.now)
+
+
+@dataclass
+class ConversationContext:
+    """
+    Tracks conversation context for enhanced RAG/MAF utilization.
+    Mirrors the server-side ConversationContext for consistency.
+    """
+    turn_count: int = 0
+    files_in_context: List[str] = field(default_factory=list)
+    last_intent: Optional[str] = None
+    conversation_history: List[Dict[str, str]] = field(default_factory=list)
+    project_files_cache: Optional[List[str]] = None
+    max_history: int = 10
+    max_context_files: int = 20
+
+    def add_turn(self, user_input: str, intent: str, response_summary: str):
+        """Add a conversation turn."""
+        self.turn_count += 1
+        self.last_intent = intent
+        self.conversation_history.append({
+            'turn': self.turn_count,
+            'user_input': user_input,
+            'intent': intent,
+            'response_summary': response_summary,
+            'timestamp': datetime.now().isoformat()
+        })
+        # Keep only recent history
+        if len(self.conversation_history) > self.max_history:
+            self.conversation_history = self.conversation_history[-self.max_history:]
+
+    def add_file_to_context(self, file_path: str):
+        """Add a file to the current context."""
+        file_path = str(file_path)
+        if file_path not in self.files_in_context:
+            self.files_in_context.append(file_path)
+            # Keep only recent files
+            if len(self.files_in_context) > self.max_context_files:
+                self.files_in_context = self.files_in_context[-self.max_context_files:]
+
+    def get_relevant_files(self, query: str, project_folder: Path) -> List[str]:
+        """
+        Get relevant files based on query keywords.
+        Returns file paths that might be relevant to the query.
+        """
+        if not self.project_files_cache:
+            return []
+
+        # Extract potential file/module names from query
+        words = re.findall(r'\b\w+\b', query.lower())
+
+        relevant = []
+        for file_path in self.project_files_cache[:100]:  # Limit search
+            file_lower = file_path.lower()
+            # Check if any query word matches part of filename
+            for word in words:
+                if len(word) > 3 and word in file_lower:
+                    relevant.append(file_path)
+                    break
+            if len(relevant) >= 10:  # Limit to top 10
+                break
+
+        return relevant
+
+    def to_dict(self) -> Dict[str, Any]:
+        """Convert to dictionary for server context."""
+        return {
+            'turn_count': self.turn_count,
+            'files_in_context': self.files_in_context,
+            'last_intent': self.last_intent,
+            'is_followup': self.turn_count > 0,
+            'conversation_history': self.conversation_history[-3:]  # Last 3 turns
+        }
 
 
 class IntentClassifier:
@@ -308,6 +382,7 @@ class DTCliInteractive:
         self.project_folder: Optional[Path] = None
         self.verbosity: VerbosityLevel = VerbosityLevel.NORMAL
         self.tracker = SummaryTracker()
+        self.conversation_context = ConversationContext()
 
         # Setup command history
         if PROMPT_TOOLKIT_AVAILABLE:
@@ -379,6 +454,40 @@ class DTCliInteractive:
             console.print(f"[red]Failed to start server: {e}[/red]")
             return False
 
+    def _discover_project_files(self):
+        """Discover and cache project files for context-aware queries."""
+        if not self.project_folder:
+            return
+
+        try:
+            # Common code file extensions
+            extensions = ['*.py', '*.js', '*.ts', '*.jsx', '*.tsx', '*.java', '*.go', '*.rs', '*.cpp', '*.c', '*.h']
+
+            files = []
+            for ext in extensions:
+                pattern = str(self.project_folder / '**' / ext)
+                found = glob_module.glob(pattern, recursive=True)
+                files.extend(found)
+
+            # Make paths relative to project folder for cleaner display
+            relative_files = []
+            for f in files:
+                try:
+                    rel = os.path.relpath(f, self.project_folder)
+                    # Skip common exclusions
+                    if not any(skip in rel for skip in ['.git/', 'node_modules/', '__pycache__/', '.venv/', 'venv/', 'dist/', 'build/']):
+                        relative_files.append(rel)
+                except ValueError:
+                    continue
+
+            self.conversation_context.project_files_cache = relative_files
+            if self.verbosity == VerbosityLevel.VERBOSE:
+                console.print(f"[dim]Discovered {len(relative_files)} project files[/dim]")
+
+        except Exception as e:
+            if self.verbosity == VerbosityLevel.VERBOSE:
+                console.print(f"[dim]Could not discover project files: {e}[/dim]")
+
     def select_project_folder(self):
         """Prompt user to select project folder."""
         console.print("\n[bold cyan]Project Folder Selection[/bold cyan]")
@@ -410,6 +519,11 @@ class DTCliInteractive:
                         break
 
         console.print(f"\n[green]Project folder set to: {self.project_folder}[/green]")
+
+        # Discover project files for context
+        if self.verbosity >= VerbosityLevel.NORMAL:
+            console.print("[cyan]Discovering project files for enhanced context...[/cyan]")
+        self._discover_project_files()
 
     def handle_slash_command(self, command: str) -> bool:
         """
@@ -456,6 +570,41 @@ class DTCliInteractive:
             console.print("Available commands: /verbosity, /help, /folder, /exit")
             return True
 
+    def _build_enriched_query_payload(self, query: str, intent: Optional[str] = None) -> Dict[str, Any]:
+        """
+        Build an enriched query payload with full context for better RAG/MAF utilization.
+
+        Args:
+            query: User's query
+            intent: Detected intent (optional)
+
+        Returns:
+            Enriched query payload dictionary
+        """
+        # Get relevant files based on query keywords
+        relevant_files = self.conversation_context.get_relevant_files(query, self.project_folder)
+
+        # Combine with files already in context
+        all_context_files = list(set(self.conversation_context.files_in_context + relevant_files))
+
+        # Build enriched query with project context
+        enriched_query = query
+        if self.project_folder and intent != 'plan':  # Don't modify planning queries
+            # Add project context hint for RAG
+            project_name = self.project_folder.name
+            enriched_query = f"[Project: {project_name}] {query}"
+
+        payload = {
+            "query": enriched_query,
+            "auto_trigger": True,
+            "context_files": all_context_files[:20] if all_context_files else None  # Limit to 20 files
+        }
+
+        if self.verbosity == VerbosityLevel.VERBOSE and all_context_files:
+            console.print(f"[dim]Sending {len(all_context_files)} context files to enhance query[/dim]")
+
+        return payload
+
     def process_user_input(self, user_input: str):
         """
         Process user input with intelligent intent classification.
@@ -471,18 +620,29 @@ class DTCliInteractive:
 
         if self.verbosity == VerbosityLevel.VERBOSE:
             console.print(f"\n[dim]Intent detected: {intent.value} (confidence: {confidence:.0%})[/dim]")
+            if self.conversation_context.turn_count > 0:
+                console.print(f"[dim]Conversation turn: {self.conversation_context.turn_count + 1}[/dim]")
 
         # Route to appropriate handler
+        result_summary = ""
         if intent == IntentType.PLAN:
             self.handle_planning_request(user_input)
+            result_summary = "Generated implementation plan"
         elif intent == IntentType.DEBUG:
             self.handle_debug_request(user_input)
+            result_summary = "Analyzed error and provided fixes"
         elif intent == IntentType.CODE:
             self.handle_code_request(user_input)
+            result_summary = "Implemented code changes"
         elif intent == IntentType.REVIEW:
             self.handle_review_request(user_input)
+            result_summary = "Reviewed code for issues"
         else:  # QUESTION or UNKNOWN
             self.handle_question_request(user_input)
+            result_summary = "Answered question"
+
+        # Update conversation context
+        self.conversation_context.add_turn(user_input, intent.value, result_summary)
 
         # Display summary
         if self.verbosity != VerbosityLevel.QUIET:
@@ -628,12 +788,12 @@ class DTCliInteractive:
             task = progress.add_task("Implementing...", total=None)
 
             try:
+                # Use enriched query payload with context
+                payload = self._build_enriched_query_payload(user_input, intent='code')
+
                 response = self.session.post(
                     f"{self.base_url}/query",
-                    json={
-                        "query": user_input,
-                        "auto_trigger": True
-                    },
+                    json=payload,
                     timeout=30
                 )
 
@@ -730,12 +890,12 @@ Simply describe what you want in natural language!
             task = progress.add_task("Searching codebase...", total=None)
 
             try:
+                # Use enriched query payload with context
+                payload = self._build_enriched_query_payload(query, intent='question')
+
                 response = self.session.post(
                     f"{self.base_url}/query",
-                    json={
-                        "query": query,
-                        "auto_trigger": True
-                    },
+                    json=payload,
                     timeout=30
                 )
 
@@ -861,13 +1021,14 @@ Simply describe what you want in natural language!
                 # Use RAG query to analyze the entire codebase
                 query = f"Review the entire codebase and find any errors, issues, security vulnerabilities, or code quality problems. {user_input}"
 
+                # Use enriched query payload with full project context
+                payload = self._build_enriched_query_payload(query, intent='review')
+                payload['timeout'] = 60  # Longer timeout for codebase review
+
                 response = self.session.post(
                     f"{self.base_url}/query",
-                    json={
-                        "query": query,
-                        "auto_trigger": True
-                    },
-                    timeout=60  # Longer timeout for codebase review
+                    json=payload,
+                    timeout=60
                 )
 
                 progress.update(task, completed=True)
