@@ -372,7 +372,7 @@ ANTHROPIC_API_KEY=your_key_here
 
 # Server Configuration
 DT_CLI_HOST=0.0.0.0
-DT_CLI_PORT=8765
+DT_CLI_PORT=58432
 
 # Logging
 LOG_LEVEL=INFO

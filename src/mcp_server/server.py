@@ -44,7 +44,7 @@ class MCPServer:
     MCP Server for Claude Code integration.
     """
 
-    def __init__(self, host: str = "127.0.0.1", port: int = 8765):
+    def __init__(self, host: str = "127.0.0.1", port: int = 58432):
         """
         Initialize the MCP server.
 
