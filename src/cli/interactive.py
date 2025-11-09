@@ -38,6 +38,7 @@ from enum import Enum, IntEnum
 from dataclasses import dataclass, field
 from datetime import datetime
 import glob as glob_module
+import logging
 
 # Import session history manager
 try:
@@ -55,6 +56,7 @@ except ImportError:
     PROMPT_TOOLKIT_AVAILABLE = False
 
 console = Console()
+logger = logging.getLogger(__name__)
 
 
 class VerbosityLevel(IntEnum):
