@@ -26,6 +26,7 @@ import sys
 import os
 import subprocess
 import time
+import socket
 
 try:
     from prompt_toolkit import PromptSession
@@ -35,6 +36,56 @@ except ImportError:
     PROMPT_TOOLKIT_AVAILABLE = False
 
 console = Console()
+
+
+def is_port_available(host: str, port: int) -> bool:
+    """
+    Check if a port is available.
+
+    Args:
+        host: Host address
+        port: Port number
+
+    Returns:
+        True if port is available, False otherwise
+    """
+    try:
+        with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
+            s.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+            s.bind((host, port))
+            return True
+    except OSError:
+        return False
+
+
+def find_available_port(host: str, preferred_port: int, max_attempts: int = 10) -> int:
+    """
+    Find an available port, starting with preferred port.
+
+    Args:
+        host: Host address
+        preferred_port: Preferred port to try first
+        max_attempts: Maximum number of ports to try
+
+    Returns:
+        Available port number
+
+    Raises:
+        RuntimeError: If no available port found
+    """
+    # Try preferred port first
+    if is_port_available(host, preferred_port):
+        return preferred_port
+
+    # Try adjacent ports
+    for offset in range(1, max_attempts):
+        port = preferred_port + offset
+        if port > 65535:
+            break
+        if is_port_available(host, port):
+            return port
+
+    raise RuntimeError(f"Could not find an available port near {preferred_port}")
 
 
 class DTCliInteractive:
@@ -86,20 +137,37 @@ class DTCliInteractive:
                 console.print("[red]Server script not found![/red]")
                 return False
 
-            # Start server as background process
+            # Extract host and port from base_url
+            # base_url format: http://host:port
+            url_parts = self.base_url.replace("http://", "").replace("https://", "").split(":")
+            host = url_parts[0]
+            preferred_port = int(url_parts[1]) if len(url_parts) > 1 else 8765
+
+            # Find available port
+            try:
+                actual_port = find_available_port(host, preferred_port)
+                if actual_port != preferred_port:
+                    console.print(f"[yellow]Port {preferred_port} in use, using port {actual_port}[/yellow]")
+                    # Update base_url to use the actual port
+                    self.base_url = f"http://{host}:{actual_port}"
+            except RuntimeError as e:
+                console.print(f"[red]{e}[/red]")
+                return False
+
+            # Start server as background process with the chosen port
             self.server_process = subprocess.Popen(
-                [sys.executable, server_script],
+                [sys.executable, server_script, "--port", str(actual_port), "--host", host],
                 stdout=subprocess.PIPE,
                 stderr=subprocess.PIPE,
                 text=True
             )
 
             # Wait for server to start (max 10 seconds)
-            console.print("[cyan]Waiting for server to start...[/cyan]")
+            console.print(f"[cyan]Waiting for server to start on port {actual_port}...[/cyan]")
             for i in range(10):
                 time.sleep(1)
                 if self.check_server():
-                    console.print("[green]Server started successfully![/green]")
+                    console.print(f"[green]Server started successfully on {self.base_url}![/green]")
                     return True
 
             console.print("[red]Server failed to start in time[/red]")

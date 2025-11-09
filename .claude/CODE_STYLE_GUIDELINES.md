@@ -77,6 +77,38 @@ The interactive interface automatically starts the server if not running:
 - Waits up to 10 seconds for server to be ready
 - Can be disabled with `--no-auto-start` flag
 
+## Port Management
+
+**Important: Only one application can use a port at a time**
+
+The system includes automatic port conflict resolution:
+
+### Server Port Handling
+```bash
+# Start server with auto-port detection
+python src/mcp_server/standalone_server.py --auto-port
+
+# Manually specify a port
+python src/mcp_server/standalone_server.py --port 9000
+```
+
+If `--auto-port` is used and the default port (8765) is busy:
+- Automatically tries ports 8766, 8767, 8768, etc.
+- Logs which port is actually used
+- Tries up to 10 alternative ports
+
+Without `--auto-port`:
+- Exits with error if port is already in use
+- Provides helpful error message
+- Suggests using `--auto-port` or `--port`
+
+### Interactive Client Port Handling
+The interactive client automatically:
+- Detects if default port is in use
+- Finds and uses an available port
+- Updates its connection URL automatically
+- Informs user which port is being used
+
 ## Remember:
 When contributing or modifying code:
 1. Check for and remove any emojis

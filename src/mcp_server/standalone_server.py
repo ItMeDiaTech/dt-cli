@@ -13,6 +13,7 @@ import uvicorn
 import logging
 import sys
 import os
+import socket
 
 # Add parent directory to path
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
@@ -32,6 +33,54 @@ logging.basicConfig(
     format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
 )
 logger = logging.getLogger(__name__)
+
+
+def is_port_available(host: str, port: int) -> bool:
+    """
+    Check if a port is available for binding.
+
+    Args:
+        host: Host address
+        port: Port number
+
+    Returns:
+        True if port is available, False otherwise
+    """
+    try:
+        with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
+            s.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+            s.bind((host, port))
+            return True
+    except OSError:
+        return False
+
+
+def find_available_port(host: str, preferred_port: int, max_attempts: int = 10) -> Optional[int]:
+    """
+    Find an available port, starting with preferred port.
+
+    Args:
+        host: Host address
+        preferred_port: Preferred port to try first
+        max_attempts: Maximum number of ports to try
+
+    Returns:
+        Available port number, or None if no port found
+    """
+    # Try preferred port first
+    if is_port_available(host, preferred_port):
+        return preferred_port
+
+    # Try adjacent ports
+    for offset in range(1, max_attempts):
+        port = preferred_port + offset
+        if port > 65535:
+            break
+        if is_port_available(host, port):
+            logger.info(f"Port {preferred_port} is in use, using port {port} instead")
+            return port
+
+    return None
 
 
 class QueryRequest(BaseModel):
@@ -729,12 +778,18 @@ class StandaloneMCPServer:
         logger.info(f"Provider: {self.llm}")
         logger.info("Server is 100% open source - no proprietary dependencies!")
 
-        uvicorn.run(
-            self.app,
-            host=self.host,
-            port=self.port,
-            log_level="info"
-        )
+        try:
+            uvicorn.run(
+                self.app,
+                host=self.host,
+                port=self.port,
+                log_level="info"
+            )
+        except OSError as e:
+            if "Address already in use" in str(e):
+                logger.error(f"Port {self.port} is already in use!")
+                logger.error("Try using a different port with --port option")
+            raise
 
 
 def main():
@@ -759,12 +814,31 @@ def main():
         '--config',
         help='Path to config file (default: llm-config.yaml)'
     )
+    parser.add_argument(
+        '--auto-port',
+        action='store_true',
+        help='Automatically find an available port if default is in use'
+    )
 
     args = parser.parse_args()
 
+    # Find available port if auto-port is enabled
+    port = args.port
+    if args.auto_port:
+        available_port = find_available_port(args.host, args.port)
+        if available_port is None:
+            logger.error(f"Could not find an available port near {args.port}")
+            sys.exit(1)
+        port = available_port
+    elif not is_port_available(args.host, args.port):
+        logger.error(f"Port {args.port} is already in use!")
+        logger.error("Use --auto-port to automatically find an available port")
+        logger.error("Or specify a different port with --port")
+        sys.exit(1)
+
     server = StandaloneMCPServer(
         host=args.host,
-        port=args.port,
+        port=port,
         config_path=args.config
     )
     server.run()
