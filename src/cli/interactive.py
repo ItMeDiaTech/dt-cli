@@ -392,6 +392,12 @@ class DTCliInteractive:
         self.tracker = SummaryTracker()
         self.conversation_context = ConversationContext()
 
+        # Configurable timeouts for different operation types
+        # Increased from 30s to prevent failures on longer operations
+        self.timeout_short = 10      # Health checks
+        self.timeout_normal = 180    # Standard operations (was 30s)
+        self.timeout_long = 300      # Long-running operations (was 60s)
+
         # Initialize session history manager
         if SESSION_HISTORY_AVAILABLE:
             self.session_history = SessionHistoryManager()
@@ -405,10 +411,32 @@ class DTCliInteractive:
         else:
             self.prompt_session = None
 
+    def log_api_call(self, endpoint: str, method: str = "POST", timeout: int = None, description: str = None):
+        """
+        Log API call details to the terminal for visibility.
+
+        Args:
+            endpoint: API endpoint being called
+            method: HTTP method (GET, POST, etc.)
+            timeout: Timeout value in seconds
+            description: Optional description of what the call does
+        """
+        if self.verbosity >= VerbosityLevel.VERBOSE:
+            # Detailed logging in verbose mode
+            msg_parts = [f"[dim cyan]→ {method} {endpoint}"]
+            if timeout:
+                msg_parts.append(f"(timeout: {timeout}s)")
+            if description:
+                msg_parts.append(f"- {description}")
+            console.print(" ".join(msg_parts) + "[/dim cyan]")
+        elif self.verbosity >= VerbosityLevel.NORMAL and description:
+            # Brief logging in normal mode - just show what's happening
+            console.print(f"[dim cyan]→ {description}[/dim cyan]")
+
     def check_server(self) -> bool:
         """Check if server is running and properly initialized."""
         try:
-            response = self.session.get(f"{self.base_url}/health", timeout=2)
+            response = self.session.get(f"{self.base_url}/health", timeout=self.timeout_short)
             if response.status_code != 200:
                 return False
 
@@ -781,13 +809,14 @@ class DTCliInteractive:
             task = progress.add_task("Generating plan...", total=None)
 
             try:
+                self.log_api_call("/query", "POST", self.timeout_normal, "Creating implementation plan")
                 response = self.session.post(
                     f"{self.base_url}/query",
                     json={
                         "query": f"Create a detailed implementation plan for: {user_input}",
                         "auto_trigger": True
                     },
-                    timeout=30
+                    timeout=self.timeout_normal
                 )
 
                 progress.update(task, completed=True)
@@ -819,25 +848,51 @@ class DTCliInteractive:
                 console.print(f"[red]Error: {e}[/red]")
 
     def handle_debug_request(self, user_input: str):
-        """Handle debug requests."""
+        """Handle debug requests with intelligent context gathering."""
         console.print("\n[bold red]Debug Mode[/bold red]")
         console.print("=" * 60)
 
         self.tracker.add_action("Analyzing error/bug")
 
-        # Check if error output is in the input
-        if len(user_input) > 200:  # Likely contains error output
-            error_output = user_input
-        else:
-            console.print("[yellow]Please paste your error output (press Ctrl+D when done):[/yellow]")
-            lines = []
-            try:
-                while True:
-                    line = input()
-                    lines.append(line)
-            except EOFError:
-                pass
-            error_output = "\n".join(lines) if lines else user_input
+        # Intelligently gather error context
+        error_output = user_input
+
+        # If input is short, try to gather context intelligently
+        if len(user_input) < 200:
+            if self.verbosity >= VerbosityLevel.NORMAL:
+                console.print("[cyan]Analyzing request and gathering context...[/cyan]")
+
+            # Try to find recent error logs in common locations
+            error_sources = []
+            if self.project_folder:
+                # Check for common log files
+                log_patterns = [
+                    "*.log",
+                    "logs/*.log",
+                    "**/.pytest_cache/**/output",
+                    "**/npm-debug.log",
+                    "**/yarn-error.log"
+                ]
+
+                for pattern in log_patterns:
+                    try:
+                        matches = list(self.project_folder.glob(pattern))
+                        # Get most recently modified
+                        if matches:
+                            latest = max(matches, key=lambda p: p.stat().st_mtime)
+                            if (time.time() - latest.stat().st_mtime) < 3600:  # Modified in last hour
+                                with open(latest, 'r') as f:
+                                    # Read last 100 lines
+                                    lines = f.readlines()
+                                    error_sources.append(f"# Recent log from {latest.name}:\n" + "".join(lines[-100:]))
+                    except:
+                        pass
+
+            # Combine user input with any found error sources
+            if error_sources:
+                error_output = f"User request: {user_input}\n\n" + "\n\n".join(error_sources[:3])  # Limit to 3 sources
+                if self.verbosity >= VerbosityLevel.VERBOSE:
+                    console.print(f"[dim]Found {len(error_sources)} recent log file(s)[/dim]")
 
         with Progress(
             SpinnerColumn(),
@@ -847,13 +902,14 @@ class DTCliInteractive:
             task = progress.add_task("Analyzing error...", total=None)
 
             try:
+                self.log_api_call("/debug", "POST", self.timeout_normal, "Analyzing error and suggesting fixes")
                 response = self.session.post(
                     f"{self.base_url}/debug",
                     json={
                         "error_output": error_output,
                         "auto_extract_code": True
                     },
-                    timeout=30
+                    timeout=self.timeout_normal
                 )
 
                 progress.update(task, completed=True)
@@ -923,10 +979,11 @@ class DTCliInteractive:
                 # Use enriched query payload with context
                 payload = self._build_enriched_query_payload(user_input, intent='code')
 
+                self.log_api_call("/query", "POST", self.timeout_long, "Implementing code changes")
                 response = self.session.post(
                     f"{self.base_url}/query",
                     json=payload,
-                    timeout=30
+                    timeout=self.timeout_long
                 )
 
                 progress.update(task, completed=True)
@@ -1068,10 +1125,11 @@ Welcome to the **100% Open Source** RAG/MAF/LLM System with AI-powered memory!
                 # Use enriched query payload with context
                 payload = self._build_enriched_query_payload(query, intent='question')
 
+                self.log_api_call("/query", "POST", self.timeout_normal, "Querying codebase for answer")
                 response = self.session.post(
                     f"{self.base_url}/query",
                     json=payload,
-                    timeout=30
+                    timeout=self.timeout_normal
                 )
 
                 progress.update(task, completed=True)
@@ -1134,13 +1192,14 @@ Welcome to the **100% Open Source** RAG/MAF/LLM System with AI-powered memory!
             task = progress.add_task("Analyzing error...", total=None)
 
             try:
+                self.log_api_call("/debug", "POST", self.timeout_normal, "Analyzing error from pasted output")
                 response = self.session.post(
                     f"{self.base_url}/debug",
                     json={
                         "error_output": error_output,
                         "auto_extract_code": True
                     },
-                    timeout=30
+                    timeout=self.timeout_normal
                 )
 
                 progress.update(task, completed=True)
@@ -1198,12 +1257,12 @@ Welcome to the **100% Open Source** RAG/MAF/LLM System with AI-powered memory!
 
                 # Use enriched query payload with full project context
                 payload = self._build_enriched_query_payload(query, intent='review')
-                payload['timeout'] = 60  # Longer timeout for codebase review
 
+                self.log_api_call("/query", "POST", self.timeout_long, "Reviewing entire codebase")
                 response = self.session.post(
                     f"{self.base_url}/query",
                     json=payload,
-                    timeout=60
+                    timeout=self.timeout_long
                 )
 
                 progress.update(task, completed=True)
@@ -1323,6 +1382,7 @@ Welcome to the **100% Open Source** RAG/MAF/LLM System with AI-powered memory!
             task = progress.add_task("Reviewing code...", total=None)
 
             try:
+                self.log_api_call("/review", "POST", self.timeout_normal, "Reviewing code for quality issues")
                 response = self.session.post(
                     f"{self.base_url}/review",
                     json={
@@ -1330,7 +1390,7 @@ Welcome to the **100% Open Source** RAG/MAF/LLM System with AI-powered memory!
                         "file_path": file_path,
                         "language": "python"
                     },
-                    timeout=30
+                    timeout=self.timeout_normal
                 )
 
                 progress.update(task, completed=True)
