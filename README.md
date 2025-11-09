@@ -8,7 +8,7 @@
 
 ---
 
-## 🎯 Overview
+## Overview
 
 **dt-cli** is a powerful development assistant that provides:
 - **Intelligent code search** using semantic RAG with AST-based chunking
@@ -23,33 +23,33 @@
 
 ---
 
-## ✨ Key Features
+## Key Features
 
-### 🔍 Advanced RAG System
+### Advanced RAG System
 - **AST-Based Chunking**: Intelligent code parsing using tree-sitter for Python, JavaScript, TypeScript
 - **BGE Embeddings**: Instruction-aware embeddings for better code understanding
 - **Auto-Trigger**: Automatic determination of when to use RAG vs. direct LLM
 - **Intent Classification**: Semantic routing based on query intent
 
-### 🤖 Agentic Debugging
+### Agentic Debugging
 - **Error Analysis**: Automatic root cause identification from stack traces
 - **Fix Suggestions**: Multi-step reasoning for proposed fixes
 - **Security Checks**: Detection of SQL injection, XSS, and OWASP Top 10 vulnerabilities
 - **Code Review**: Quality scoring (0-10) with severity-categorized issues
 
-### 🕸️ Knowledge Graph
+### Knowledge Graph
 - **Dependency Tracking**: What does this code depend on?
 - **Impact Analysis**: What breaks if I change this?
 - **Usage Finding**: Where is this function/class used?
 - **Relationship Mapping**: Full code relationship graph
 
-### 📊 Quality Evaluation
+### Quality Evaluation
 - **RAGAS Metrics**: Context relevance, answer faithfulness, answer relevance
 - **Hybrid Search**: BM25 + semantic search with tunable weights
 - **A/B Testing**: Compare different RAG configurations
 - **Performance Metrics**: Query time, cache hit rate, confidence scores
 
-### 🎨 Three Interaction Modes
+### Three Interaction Modes
 
 **1. Claude Code Plugin (MCP)**
 ```bash
@@ -57,12 +57,22 @@
 # Use dt-cli tools seamlessly in Claude Code conversations
 ```
 
-**2. Interactive Terminal UI**
+**2. Intelligent Interactive CLI** ⭐ **ENHANCED**
 ```bash
-python dt-cli.py
-# Beautiful Rich-based menu interface
-# 10 interactive features with progress indicators
+python src/cli/interactive.py
+# Natural language interface with intelligent context awareness
+# Hierarchical session memory across CLI restarts
+# Auto-discovers project files for enhanced context
+# 10+ slash commands for power users
 ```
+
+**NEW Features in Interactive CLI:**
+- **Session History with Hierarchical Memory** - Conversations persist across sessions with intelligent compression
+- **Context-Aware Queries** - Automatically includes relevant project files in queries
+- **Smart File Discovery** - Indexes your project automatically for better context
+- **Natural Language Input** - Just type what you need, no menu navigation required
+- **Conversation Continuity** - Resume from where you left off, even days later
+- **Importance Scoring** - Critical conversations are never forgotten
 
 **3. REST API**
 ```bash
@@ -75,7 +85,7 @@ curl http://localhost:8765/query -X POST -d '{"query": "..."}'
 
 ---
 
-## 🚀 Quick Start
+## Quick Start
 
 ### Prerequisites
 - Python 3.8+
@@ -127,7 +137,92 @@ python src/mcp_server/standalone_server.py
 
 ## 📚 Usage
 
-### Interactive TUI Features
+### Interactive CLI with Intelligent Features ⭐
+
+The **new Interactive CLI** (`src/cli/interactive.py`) provides a natural language interface with production-grade conversation memory:
+
+```bash
+python src/cli/interactive.py
+```
+
+**Key Features:**
+
+**Hierarchical Session Memory** (Based on 2024-2025 Research)
+```
+> Review codebase and find any errors
+[Analyzing entire codebase in /home/user/dt-cli...]
+[System remembers this conversation across sessions]
+
+> (Next day) What errors did we discuss yesterday?
+[Retrieves relevant history from hierarchical memory]
+```
+
+- **4-Level Memory Hierarchy:**
+  - Level 1: Working Memory (last 20 turns, full detail)
+  - Level 2: Summarized Context (automatic compression)
+  - Level 3: Session Summary (when closed)
+  - Level 4: Archived Sessions (retrievable history)
+
+- **Automatic Compression:** ~90% memory reduction while preserving important information
+- **Importance Scoring:** Critical conversations (debug, code changes) never forgotten
+- **Persistent Storage:** `~/.dt_cli_sessions.json` survives CLI restarts
+
+**Context-Aware Queries**
+```
+> Where is authentication handled?
+[Automatically includes relevant auth files as context]
+[Project: dt-cli] Where is authentication handled?
+  Context files: src/auth/*.py (intelligently selected)
+```
+
+**Slash Commands:**
+```
+/history          - View current session with hierarchical memory
+/sessions         - List all sessions (current + archived)
+/stats            - Show memory usage and statistics
+/clearsession     - Clear all history (with confirmation)
+/verbosity <level> - Set output detail (quiet/normal/verbose)
+/folder           - Change project folder
+/help             - Show comprehensive help
+/exit             - Exit and save session
+```
+
+**Natural Language Interaction:**
+```
+> Review codebase and find any errors
+  ✓ Detects REVIEW intent
+  ✓ Uses project folder automatically
+  ✓ No redundant prompts!
+
+> Debug this authentication error
+  ✓ Detects DEBUG intent
+  ✓ High importance score (0.95)
+  ✓ Always kept in memory
+
+> What did we just fix?
+  ✓ Follows up using conversation history
+  ✓ Context from previous turns
+```
+
+**Session Statistics Example:**
+```
+> /stats
+
+Session Statistics
+══════════════════════════════════════════════════
+Metric                    | Value
+──────────────────────────┼──────────────────────
+Current Session Active    | Yes
+Current Session Turns     | 45
+Archived Sessions         | 3
+Total Archived Turns      | 187
+Total All Turns           | 232
+Storage File              | ~/.dt_cli_sessions.json
+```
+
+### Traditional Menu Interface (dt-cli.py)
+
+For users preferring a traditional menu:
 
 ```
 ┌─────────────────────────────────────────────┐

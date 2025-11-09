@@ -37,6 +37,15 @@ from pathlib import Path
 from enum import Enum, IntEnum
 from dataclasses import dataclass, field
 from datetime import datetime
+import glob as glob_module
+
+# Import session history manager
+try:
+    from .session_history import SessionHistoryManager
+    SESSION_HISTORY_AVAILABLE = True
+except ImportError:
+    SESSION_HISTORY_AVAILABLE = False
+    SessionHistoryManager = None
 
 try:
     from prompt_toolkit import PromptSession
@@ -93,6 +102,79 @@ class FileChange:
     before_snippet: Optional[str] = None
     after_snippet: Optional[str] = None
     timestamp: datetime = field(default_factory=datetime.now)
+
+
+@dataclass
+class ConversationContext:
+    """
+    Tracks conversation context for enhanced RAG/MAF utilization.
+    Mirrors the server-side ConversationContext for consistency.
+    """
+    turn_count: int = 0
+    files_in_context: List[str] = field(default_factory=list)
+    last_intent: Optional[str] = None
+    conversation_history: List[Dict[str, str]] = field(default_factory=list)
+    project_files_cache: Optional[List[str]] = None
+    max_history: int = 10
+    max_context_files: int = 20
+
+    def add_turn(self, user_input: str, intent: str, response_summary: str):
+        """Add a conversation turn."""
+        self.turn_count += 1
+        self.last_intent = intent
+        self.conversation_history.append({
+            'turn': self.turn_count,
+            'user_input': user_input,
+            'intent': intent,
+            'response_summary': response_summary,
+            'timestamp': datetime.now().isoformat()
+        })
+        # Keep only recent history
+        if len(self.conversation_history) > self.max_history:
+            self.conversation_history = self.conversation_history[-self.max_history:]
+
+    def add_file_to_context(self, file_path: str):
+        """Add a file to the current context."""
+        file_path = str(file_path)
+        if file_path not in self.files_in_context:
+            self.files_in_context.append(file_path)
+            # Keep only recent files
+            if len(self.files_in_context) > self.max_context_files:
+                self.files_in_context = self.files_in_context[-self.max_context_files:]
+
+    def get_relevant_files(self, query: str, project_folder: Path) -> List[str]:
+        """
+        Get relevant files based on query keywords.
+        Returns file paths that might be relevant to the query.
+        """
+        if not self.project_files_cache:
+            return []
+
+        # Extract potential file/module names from query
+        words = re.findall(r'\b\w+\b', query.lower())
+
+        relevant = []
+        for file_path in self.project_files_cache[:100]:  # Limit search
+            file_lower = file_path.lower()
+            # Check if any query word matches part of filename
+            for word in words:
+                if len(word) > 3 and word in file_lower:
+                    relevant.append(file_path)
+                    break
+            if len(relevant) >= 10:  # Limit to top 10
+                break
+
+        return relevant
+
+    def to_dict(self) -> Dict[str, Any]:
+        """Convert to dictionary for server context."""
+        return {
+            'turn_count': self.turn_count,
+            'files_in_context': self.files_in_context,
+            'last_intent': self.last_intent,
+            'is_followup': self.turn_count > 0,
+            'conversation_history': self.conversation_history[-3:]  # Last 3 turns
+        }
 
 
 class IntentClassifier:
@@ -308,6 +390,13 @@ class DTCliInteractive:
         self.project_folder: Optional[Path] = None
         self.verbosity: VerbosityLevel = VerbosityLevel.NORMAL
         self.tracker = SummaryTracker()
+        self.conversation_context = ConversationContext()
+
+        # Initialize session history manager
+        if SESSION_HISTORY_AVAILABLE:
+            self.session_history = SessionHistoryManager()
+        else:
+            self.session_history = None
 
         # Setup command history
         if PROMPT_TOOLKIT_AVAILABLE:
@@ -379,6 +468,40 @@ class DTCliInteractive:
             console.print(f"[red]Failed to start server: {e}[/red]")
             return False
 
+    def _discover_project_files(self):
+        """Discover and cache project files for context-aware queries."""
+        if not self.project_folder:
+            return
+
+        try:
+            # Common code file extensions
+            extensions = ['*.py', '*.js', '*.ts', '*.jsx', '*.tsx', '*.java', '*.go', '*.rs', '*.cpp', '*.c', '*.h']
+
+            files = []
+            for ext in extensions:
+                pattern = str(self.project_folder / '**' / ext)
+                found = glob_module.glob(pattern, recursive=True)
+                files.extend(found)
+
+            # Make paths relative to project folder for cleaner display
+            relative_files = []
+            for f in files:
+                try:
+                    rel = os.path.relpath(f, self.project_folder)
+                    # Skip common exclusions
+                    if not any(skip in rel for skip in ['.git/', 'node_modules/', '__pycache__/', '.venv/', 'venv/', 'dist/', 'build/']):
+                        relative_files.append(rel)
+                except ValueError:
+                    continue
+
+            self.conversation_context.project_files_cache = relative_files
+            if self.verbosity == VerbosityLevel.VERBOSE:
+                console.print(f"[dim]Discovered {len(relative_files)} project files[/dim]")
+
+        except Exception as e:
+            if self.verbosity == VerbosityLevel.VERBOSE:
+                console.print(f"[dim]Could not discover project files: {e}[/dim]")
+
     def select_project_folder(self):
         """Prompt user to select project folder."""
         console.print("\n[bold cyan]Project Folder Selection[/bold cyan]")
@@ -410,6 +533,17 @@ class DTCliInteractive:
                         break
 
         console.print(f"\n[green]Project folder set to: {self.project_folder}[/green]")
+
+        # Discover project files for context
+        if self.verbosity >= VerbosityLevel.NORMAL:
+            console.print("[cyan]Discovering project files for enhanced context...[/cyan]")
+        self._discover_project_files()
+
+        # Start session history for this project
+        if self.session_history:
+            session_id = self.session_history.start_session(str(self.project_folder))
+            if self.verbosity == VerbosityLevel.VERBOSE:
+                console.print(f"[dim]Started session: {session_id}[/dim]")
 
     def handle_slash_command(self, command: str) -> bool:
         """
@@ -451,10 +585,95 @@ class DTCliInteractive:
                 self.select_project_folder()
             return True
 
+        elif cmd == "/history":
+            self.show_session_history()
+            return True
+
+        elif cmd == "/sessions":
+            self.show_all_sessions()
+            return True
+
+        elif cmd == "/clearsession":
+            if Confirm.ask("[bold red]Clear ALL session history?[/bold red] This cannot be undone!", default=False):
+                if self.session_history:
+                    self.session_history.clear_all_history()
+                    console.print("[green]Session history cleared[/green]")
+                else:
+                    console.print("[yellow]Session history not available[/yellow]")
+            return True
+
+        elif cmd == "/stats":
+            self.show_session_stats()
+            return True
+
         else:
             console.print(f"[red]Unknown command: {cmd}[/red]")
-            console.print("Available commands: /verbosity, /help, /folder, /exit")
+            console.print("Available commands: /verbosity, /help, /folder, /history, /sessions, /stats, /clearsession, /exit")
             return True
+
+    def _calculate_importance_score(self, intent: IntentType, confidence: float) -> float:
+        """
+        Calculate importance score for a conversation turn.
+
+        Used for selective retention in hierarchical memory.
+
+        Args:
+            intent: Detected intent
+            confidence: Confidence score
+
+        Returns:
+            Importance score (0.0-1.0)
+        """
+        # Base score from confidence
+        score = confidence
+
+        # Boost certain intents
+        importance_boost = {
+            IntentType.DEBUG: 0.2,   # Debugging sessions are important
+            IntentType.CODE: 0.15,   # Code changes are important
+            IntentType.PLAN: 0.15,   # Plans are important
+            IntentType.REVIEW: 0.1,  # Reviews are moderately important
+        }
+
+        boost = importance_boost.get(intent, 0.0)
+        score = min(1.0, score + boost)
+
+        return score
+
+    def _build_enriched_query_payload(self, query: str, intent: Optional[str] = None) -> Dict[str, Any]:
+        """
+        Build an enriched query payload with full context for better RAG/MAF utilization.
+
+        Args:
+            query: User's query
+            intent: Detected intent (optional)
+
+        Returns:
+            Enriched query payload dictionary
+        """
+        # Get relevant files based on query keywords
+        relevant_files = self.conversation_context.get_relevant_files(query, self.project_folder)
+
+        # Combine with files already in context
+        all_context_files = list(set(self.conversation_context.files_in_context + relevant_files))
+
+        # Build enriched query with project context
+        enriched_query = query
+        if self.project_folder and intent != 'plan':  # Don't modify planning queries
+            # Add project context hint for RAG
+            project_name = self.project_folder.name
+            enriched_query = f"[Project: {project_name}] {query}"
+
+        payload = {
+            "query": enriched_query,
+            "auto_trigger": True,
+            "context_files": all_context_files[:20] if all_context_files else None  # Limit to 20 files
+        }
+
+        if self.verbosity == VerbosityLevel.VERBOSE and all_context_files:
+            console.print(f"[dim]Sending {len(all_context_files)} context files to enhance query[/dim]")
+
+        return payload
 
     def process_user_input(self, user_input: str):
         """
@@ -471,18 +690,35 @@ class DTCliInteractive:
 
         if self.verbosity == VerbosityLevel.VERBOSE:
             console.print(f"\n[dim]Intent detected: {intent.value} (confidence: {confidence:.0%})[/dim]")
+            if self.conversation_context.turn_count > 0:
+                console.print(f"[dim]Conversation turn: {self.conversation_context.turn_count + 1}[/dim]")
 
         # Route to appropriate handler
+        result_summary = ""
         if intent == IntentType.PLAN:
             self.handle_planning_request(user_input)
+            result_summary = "Generated implementation plan"
         elif intent == IntentType.DEBUG:
             self.handle_debug_request(user_input)
+            result_summary = "Analyzed error and provided fixes"
         elif intent == IntentType.CODE:
             self.handle_code_request(user_input)
+            result_summary = "Implemented code changes"
         elif intent == IntentType.REVIEW:
             self.handle_review_request(user_input)
+            result_summary = "Reviewed code for issues"
         else:  # QUESTION or UNKNOWN
             self.handle_question_request(user_input)
+            result_summary = "Answered question"
+
+        # Update conversation context
+        self.conversation_context.add_turn(user_input, intent.value, result_summary)
+
+        # Add to session history with hierarchical memory
+        if self.session_history:
+            # Calculate importance score based on intent
+            importance_score = self._calculate_importance_score(intent, confidence)
+            self.session_history.add_turn(user_input, intent.value, result_summary, importance_score)
 
         # Display summary
         if self.verbosity != VerbosityLevel.QUIET:
@@ -628,12 +864,12 @@ class DTCliInteractive:
             task = progress.add_task("Implementing...", total=None)
 
             try:
+                # Use enriched query payload with context
+                payload = self._build_enriched_query_payload(user_input, intent='code')
+
                 response = self.session.post(
                     f"{self.base_url}/query",
-                    json={
-                        "query": user_input,
-                        "auto_trigger": True
-                    },
+                    json=payload,
                     timeout=30
                 )
 
@@ -655,7 +891,7 @@ class DTCliInteractive:
 
     def handle_review_request(self, user_input: str):
         """Handle code review requests."""
-        self.review_code()
+        self.review_code(user_input=user_input)
 
     def handle_question_request(self, user_input: str):
         """Handle question/query requests."""
@@ -663,32 +899,75 @@ class DTCliInteractive:
 
     def show_welcome(self):
         """Display welcome message."""
+        # Get session info
+        session_info = ""
+        if self.session_history:
+            stats = self.session_history.get_statistics()
+            if stats['current_session_active']:
+                session_info = f"\n**Session:** Active ({stats['current_session_turns']} turns this session)"
+                if stats['archived_sessions'] > 0:
+                    session_info += f" | {stats['archived_sessions']} archived sessions"
+
         welcome_text = f"""
-# dt-cli Interactive Terminal
+# dt-cli Intelligent Interactive CLI
 
-Welcome to the **100% Open Source** RAG/MAF/LLM System!
+Welcome to the **100% Open Source** RAG/MAF/LLM System with AI-powered memory!
 
-**Project Folder:** `{self.project_folder}`
-**Verbosity:** `{self.verbosity.value}`
+**Project:** `{self.project_folder}`
+**Verbosity:** `{self.verbosity.to_string()}`{session_info}
+
+## New Intelligent Features
+
+**Hierarchical Session Memory** - Your conversations persist across sessions
+- Remember context from days/weeks ago
+- Automatic compression of older conversations
+- Important discussions never forgotten
+
+**Context-Aware Queries** - Automatically includes relevant files
+- Smart file discovery from your project
+- Keyword-based relevance matching
+- Up to 20 context files sent per query
+
+**Natural Language Interface** - Just type what you need
+- No menu navigation required
+- Intent auto-detection (debug, code, review, question)
+- Follow-up questions understand context
 
 ## What can I help you with?
 
-Just type your request naturally - I'll figure out what you need:
-- Ask questions about your codebase
-- Debug errors and get fix suggestions
-- Implement new features or refactor code
-- Review code for quality and security
-- Plan complex implementations
+**Ask Questions:**
+- "Where is authentication handled?"
+- "How does the caching system work?"
 
-## Slash Commands:
+**Debug Errors:**
+- "Debug this ImportError"
+- "Fix the failing tests"
+
+**Review & Implement:**
+- "Review codebase and find any errors"
+- "Add logging to the API endpoints"
+
+**Plan Features:**
+- "Plan how to add rate limiting"
+- "Design a caching strategy"
+
+## Power User Commands
+
+**Memory & Session:**
+- `/history` - View current session with full context
+- `/sessions` - List all sessions (current + archived)
+- `/stats` - Show memory usage statistics
+- `/clearsession` - Clear all history
+
+**Settings:**
 - `/verbosity <quiet|normal|verbose>` - Control output detail
 - `/folder` - Change project folder
-- `/help` - Show this help
-- `/exit` - Exit the program
+- `/help` - Comprehensive help
+- `/exit` - Save session and exit
 
-Simply describe what you want in natural language!
+**Tip:** Your first query automatically discovers project files for better context!
 """
-        console.print(Panel(Markdown(welcome_text), border_style="blue", box=box.DOUBLE))
+        console.print(Panel(Markdown(welcome_text), border_style="cyan", box=box.DOUBLE))
 
 
     def get_input_with_history(self, prompt_text: str, default: str = "") -> str:
@@ -730,12 +1009,12 @@ Simply describe what you want in natural language!
             task = progress.add_task("Searching codebase...", total=None)
 
             try:
+                # Use enriched query payload with context
+                payload = self._build_enriched_query_payload(query, intent='question')
+
                 response = self.session.post(
                     f"{self.base_url}/query",
-                    json={
-                        "query": query,
-                        "auto_trigger": True
-                    },
+                    json=payload,
                     timeout=30
                 )
 
@@ -848,7 +1127,48 @@ Simply describe what you want in natural language!
             except Exception as e:
                 console.print(f"[red]Error: {e}[/red]")
 
-    def review_code(self):
+    def handle_codebase_review(self, user_input: str):
+        """Handle review of entire codebase using RAG."""
+        with Progress(
+            SpinnerColumn(),
+            TextColumn("[progress.description]{task.description}"),
+            console=console
+        ) as progress:
+            task = progress.add_task("Analyzing codebase...", total=None)
+
+            try:
+                # Use RAG query to analyze the entire codebase
+                query = f"Review the entire codebase and find any errors, issues, security vulnerabilities, or code quality problems. {user_input}"
+
+                # Use enriched query payload with full project context
+                payload = self._build_enriched_query_payload(query, intent='review')
+                payload['timeout'] = 60  # Longer timeout for codebase review
+
+                response = self.session.post(
+                    f"{self.base_url}/query",
+                    json=payload,
+                    timeout=60
+                )
+
+                progress.update(task, completed=True)
+
+                if response.status_code == 200:
+                    result = response.json()
+
+                    console.print("\n[bold magenta]Codebase Review Results:[/bold magenta]")
+                    console.print(Panel(Markdown(result['response']), border_style="magenta"))
+
+                    self.tracker.add_action("Codebase review completed")
+
+                else:
+                    console.print(f"[red]Error: {response.status_code}[/red]")
+
+            except requests.exceptions.Timeout:
+                console.print("[red]Request timed out. Codebase review may take longer for large projects.[/red]")
+            except Exception as e:
+                console.print(f"[red]Error: {e}[/red]")
+
+    def review_code(self, user_input: Optional[str] = None):
         """Handle code review."""
         if self.verbosity >= VerbosityLevel.NORMAL:
             console.print("\n[bold magenta]Review Code[/bold magenta]", style="bold")
@@ -856,8 +1176,40 @@ Simply describe what you want in natural language!
 
         self.tracker.add_action("Reviewing code")
 
-        # Get code input
-        file_path = Prompt.ask("[bold]File path to review[/bold] (or press Enter to paste code)")
+        # Determine what to review based on user input
+        file_path = None
+        if user_input:
+            # Check if user wants to review entire codebase
+            codebase_keywords = [r'\bcodebase\b', r'\bentire (project|code)\b', r'\ball (files|code)\b', r'\bproject\b']
+            is_codebase_review = any(re.search(pattern, user_input.lower()) for pattern in codebase_keywords)
+
+            if is_codebase_review and self.project_folder:
+                # Use RAG query to review the entire codebase
+                console.print(f"[cyan]Reviewing entire codebase in: {self.project_folder}[/cyan]")
+                self.handle_codebase_review(user_input)
+                return
+
+            # Try to extract file path from user input
+            # Look for patterns like "review auth.py", "check src/api.py for errors"
+            file_patterns = [
+                r'(?:review|check|analyze|inspect)\s+([^\s]+\.py)',
+                r'(?:in|file)\s+([^\s]+\.py)',
+                r'([^\s]+\.py)'
+            ]
+            for pattern in file_patterns:
+                match = re.search(pattern, user_input, re.IGNORECASE)
+                if match:
+                    file_path = match.group(1)
+                    # If it's a relative path, make it relative to project_folder
+                    if not os.path.isabs(file_path) and self.project_folder:
+                        potential_path = self.project_folder / file_path
+                        if potential_path.exists():
+                            file_path = str(potential_path)
+                    break
+
+        # Get code input if not determined from user input
+        if not file_path:
+            file_path = Prompt.ask("[bold]File path to review[/bold] (or press Enter to paste code)")
 
         if file_path.strip():
             # Read from file
@@ -978,6 +1330,83 @@ Simply describe what you want in natural language!
             except Exception as e:
                 console.print(f"[red]Error: {e}[/red]")
 
+    def show_session_history(self):
+        """Display current session history."""
+        if not self.session_history:
+            console.print("[yellow]Session history not available[/yellow]")
+            return
+
+        console.print("\n[bold cyan]Current Session History[/bold cyan]")
+        console.print("=" * 60)
+
+        context = self.session_history.get_full_context_for_llm(include_summarized=True)
+
+        if not context:
+            console.print("[dim]No conversation history yet[/dim]")
+            return
+
+        console.print(Panel(context, border_style="cyan", title="Session Context"))
+
+    def show_all_sessions(self):
+        """Display all sessions (current and archived)."""
+        if not self.session_history:
+            console.print("[yellow]Session history not available[/yellow]")
+            return
+
+        console.print("\n[bold cyan]All Sessions[/bold cyan]")
+        console.print("=" * 60)
+
+        # Show current session
+        if self.session_history.current_session:
+            session = self.session_history.current_session
+            console.print(f"\n[bold green]Current Session (Active)[/bold green]")
+            console.print(f"  ID: {session.session_id}")
+            console.print(f"  Project: {session.project_folder}")
+            console.print(f"  Started: {session.start_time}")
+            console.print(f"  Turns: {session.total_turns}")
+            console.print(f"  Last Activity: {session.last_activity}")
+
+        # Show archived sessions
+        if self.session_history.archived_sessions:
+            console.print(f"\n[bold]Archived Sessions ({len(self.session_history.archived_sessions)})[/bold]")
+
+            for session in reversed(self.session_history.archived_sessions[-5:]):  # Show last 5
+                console.print(f"\n  Session: {session.session_id}")
+                console.print(f"    Project: {session.project_folder}")
+                console.print(f"    Duration: {session.start_time} → {session.last_activity}")
+                console.print(f"    Turns: {session.total_turns}")
+
+                if session.session_summary:
+                    console.print(f"    Summary: {session.session_summary.summary}")
+                    if session.session_summary.key_topics:
+                        console.print(f"    Topics: {', '.join(session.session_summary.key_topics)}")
+        else:
+            console.print("\n[dim]No archived sessions[/dim]")
+
+    def show_session_stats(self):
+        """Display session statistics."""
+        if not self.session_history:
+            console.print("[yellow]Session history not available[/yellow]")
+            return
+
+        stats = self.session_history.get_statistics()
+
+        console.print("\n[bold cyan]Session Statistics[/bold cyan]")
+        console.print("=" * 60)
+
+        table = Table(show_header=True, header_style="bold magenta")
+        table.add_column("Metric", style="cyan")
+        table.add_column("Value", style="green")
+
+        table.add_row("Current Session Active", "Yes" if stats['current_session_active'] else "No")
+        table.add_row("Current Session Turns", str(stats['current_session_turns']))
+        table.add_row("Archived Sessions", str(stats['archived_sessions']))
+        table.add_row("Total Archived Turns", str(stats['total_archived_turns']))
+        table.add_row("Total All Turns", str(stats['total_all_turns']))
+        table.add_row("Storage File", stats['storage_file'])
+
+        console.print(table)
+
     def show_help(self):
         """Show help information."""
         help_text = f"""
@@ -1023,6 +1452,10 @@ No need to select options or specify commands!
   - `verbose`: Detailed output with explanations
 
 - **`/folder`** - View or change project folder
+- **`/history`** - Show current session history (hierarchical memory)
+- **`/sessions`** - View all sessions (current and archived)
+- **`/stats`** - Show session statistics
+- **`/clearsession`** - Clear ALL session history (irreversible!)
 - **`/help`** - Show this help message
 - **`/exit`** - Exit the program
 
@@ -1115,7 +1548,15 @@ See README.md and PHASE*.md files for detailed documentation.
                     console.print(f"[dim]{traceback.format_exc()}[/dim]")
 
     def __del__(self):
-        """Cleanup: stop server if we started it."""
+        """Cleanup: stop server and close session."""
+        # Close session history
+        if self.session_history:
+            try:
+                self.session_history.close_session(generate_summary=True)
+            except:
+                pass
+
+        # Stop server if we started it
         if self.server_process:
             try:
                 self.server_process.terminate()

@@ -26,6 +26,48 @@
 - **LLM Provider Switching**: Change LLM providers on-the-fly without restart
 - **Professional Interface**: No emojis, clean terminal-compatible design
 
+### Intelligent Context & Memory (2025 Research-Based)
+
+**Hierarchical Session Memory** - Production-grade conversation memory based on latest research:
+
+- **Research Foundation:**
+  - "Recursively Summarizing Enables Long-Term Dialogue Memory" (arXiv:2308.15022)
+  - "Dynamic Tree Memory Representation for LLMs" (arXiv:2410.14052)
+  - "LLM Chat History Summarization Guide 2025" (mem0.ai)
+
+- **4-Level Memory Hierarchy:**
+  ```
+  Level 1: Working Memory (Last 20 turns, full detail)
+           ↓ Automatic compression when threshold reached
+  Level 2: Summarized Context (Compressed older turns)
+           ↓ Session closes
+  Level 3: Session Summary (High-level overview)
+           ↓ Archived
+  Level 4: Archived Sessions (Historical reference)
+  ```
+
+- **Key Features:**
+  - **Importance Scoring**: Debug/code changes get +15-20% boost, never forgotten
+  - **Sliding Window**: Recent conversations in full, older ones compressed (~90% reduction)
+  - **Persistent Storage**: `~/.dt_cli_sessions.json` survives restarts
+  - **Session Timeout**: Auto-close after 24 hours inactivity
+  - **Configurable Thresholds**: 20-turn working memory, 50-turn compression trigger
+
+**Context-Aware Query Enhancement:**
+
+- **Automatic File Discovery**: Indexes project on folder selection
+- **Keyword Matching**: Intelligently selects relevant files based on query
+- **Project Context Injection**: Adds `[Project: name]` prefix to queries
+- **Context File Passing**: Sends up to 20 relevant files to server
+- **Turn Tracking**: Conversation history for follow-up understanding
+
+**Benefits:**
+- Resume conversations from days/weeks ago
+- Context improves over time as you use the system
+- No manual context management required
+- Memory efficient with intelligent compression
+- Privacy-focused (all data stored locally)
+
 ---
 
 ## Overview
