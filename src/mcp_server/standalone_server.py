@@ -227,7 +227,19 @@ class StandaloneMCPServer:
         self.hybrid_search = HybridSearch()
 
         # Setup routes
+        logger.info("Setting up API routes...")
         self._setup_routes()
+
+        # Log registered routes
+        route_count = len([r for r in self.app.routes if hasattr(r, 'path')])
+        logger.info(f"Registered {route_count} API routes")
+
+        # Log key endpoints
+        key_endpoints = ['/health', '/query', '/review', '/debug']
+        registered_paths = [r.path for r in self.app.routes if hasattr(r, 'path')]
+        for endpoint in key_endpoints:
+            status = "registered" if endpoint in registered_paths else "MISSING"
+            logger.info(f"  {endpoint}: {status}")
 
         logger.info("Standalone MCP Server initialized successfully")
 
@@ -251,10 +263,20 @@ class StandaloneMCPServer:
             llm_healthy = self.llm.check_health()
             rag_healthy = True  # Could add RAG health check
 
+            # Check if key endpoints are registered
+            registered_paths = [r.path for r in self.app.routes if hasattr(r, 'path')]
+            key_endpoints = {
+                'query': '/query' in registered_paths,
+                'review': '/review' in registered_paths,
+                'debug': '/debug' in registered_paths
+            }
+            endpoints_healthy = all(key_endpoints.values())
+
             return {
-                "status": "healthy" if llm_healthy and rag_healthy else "degraded",
+                "status": "healthy" if llm_healthy and rag_healthy and endpoints_healthy else "degraded",
                 "llm": "healthy" if llm_healthy else "unhealthy",
-                "rag": "healthy" if rag_healthy else "unhealthy"
+                "rag": "healthy" if rag_healthy else "unhealthy",
+                "endpoints": key_endpoints
             }
 
         @self.app.get("/info")

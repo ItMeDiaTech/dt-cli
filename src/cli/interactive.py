@@ -406,10 +406,27 @@ class DTCliInteractive:
             self.prompt_session = None
 
     def check_server(self) -> bool:
-        """Check if server is running."""
+        """Check if server is running and properly initialized."""
         try:
             response = self.session.get(f"{self.base_url}/health", timeout=2)
-            return response.status_code == 200
+            if response.status_code != 200:
+                return False
+
+            # Check if server is fully initialized with all endpoints
+            health_data = response.json()
+            if health_data.get('status') == 'degraded':
+                # Server is running but not fully healthy
+                console.print("[yellow]Server is running but degraded:[/yellow]")
+                if 'endpoints' in health_data:
+                    missing = [k for k, v in health_data['endpoints'].items() if not v]
+                    if missing:
+                        console.print(f"  Missing endpoints: {', '.join(missing)}")
+                if health_data.get('llm') == 'unhealthy':
+                    console.print("  LLM provider is unhealthy")
+                console.print("[yellow]Server may need to be restarted[/yellow]")
+                return False
+
+            return True
         except:
             return False
 
@@ -842,9 +859,27 @@ class DTCliInteractive:
 
                     self.tracker.add_action("Error analyzed and fixes suggested")
 
+                elif response.status_code == 404:
+                    console.print("[red]Error: The /debug endpoint was not found.[/red]")
+                    console.print("\n[yellow]This could mean:[/yellow]")
+                    console.print("  1. The server is not running properly")
+                    console.print("  2. The server failed to initialize completely")
+                    console.print(f"\n[cyan]Current server URL: {self.base_url}[/cyan]")
+                    console.print("\n[yellow]Try restarting the server:[/yellow]")
+                    console.print("  [cyan]python src/mcp_server/standalone_server.py[/cyan]")
                 else:
                     console.print(f"[red]Error: {response.status_code}[/red]")
+                    try:
+                        error_detail = response.json()
+                        if 'detail' in error_detail:
+                            console.print(f"[red]Details: {error_detail['detail']}[/red]")
+                    except:
+                        pass
 
+            except requests.exceptions.ConnectionError:
+                console.print(f"[red]Connection Error: Could not connect to server at {self.base_url}[/red]")
+                console.print("[yellow]The server may not be running. Try starting it with:[/yellow]")
+                console.print("  [cyan]python src/mcp_server/standalone_server.py[/cyan]")
             except Exception as e:
                 console.print(f"[red]Error: {e}[/red]")
 
@@ -1160,11 +1195,34 @@ Welcome to the **100% Open Source** RAG/MAF/LLM System with AI-powered memory!
 
                     self.tracker.add_action("Codebase review completed")
 
+                elif response.status_code == 404:
+                    console.print("[red]Error: The /query endpoint was not found.[/red]")
+                    console.print("\n[yellow]This could mean:[/yellow]")
+                    console.print("  1. The server is not running properly")
+                    console.print("  2. The server failed to initialize completely")
+                    console.print("  3. You're connected to the wrong server/port")
+                    console.print(f"\n[cyan]Current server URL: {self.base_url}[/cyan]")
+                    console.print("\n[yellow]Troubleshooting steps:[/yellow]")
+                    console.print("  1. Check if server is running:")
+                    console.print("     [cyan]curl {}/health[/cyan]".format(self.base_url))
+                    console.print("  2. Restart the server:")
+                    console.print("     [cyan]python src/mcp_server/standalone_server.py[/cyan]")
+                    console.print("  3. Check server logs for initialization errors")
                 else:
                     console.print(f"[red]Error: {response.status_code}[/red]")
+                    try:
+                        error_detail = response.json()
+                        if 'detail' in error_detail:
+                            console.print(f"[red]Details: {error_detail['detail']}[/red]")
+                    except:
+                        console.print(f"[red]Response: {response.text[:200]}[/red]")
 
             except requests.exceptions.Timeout:
                 console.print("[red]Request timed out. Codebase review may take longer for large projects.[/red]")
+            except requests.exceptions.ConnectionError:
+                console.print(f"[red]Connection Error: Could not connect to server at {self.base_url}[/red]")
+                console.print("[yellow]The server may not be running. Try starting it with:[/yellow]")
+                console.print("  [cyan]python src/mcp_server/standalone_server.py[/cyan]")
             except Exception as e:
                 console.print(f"[red]Error: {e}[/red]")
 
@@ -1324,9 +1382,32 @@ Welcome to the **100% Open Source** RAG/MAF/LLM System with AI-powered memory!
 
                     self.tracker.add_action("Code review completed")
 
+                elif response.status_code == 404:
+                    console.print("[red]Error: The /review endpoint was not found.[/red]")
+                    console.print("\n[yellow]This could mean:[/yellow]")
+                    console.print("  1. The server is not running properly")
+                    console.print("  2. The server failed to initialize completely")
+                    console.print("  3. You're connected to the wrong server/port")
+                    console.print(f"\n[cyan]Current server URL: {self.base_url}[/cyan]")
+                    console.print("\n[yellow]Troubleshooting steps:[/yellow]")
+                    console.print("  1. Check if server is running:")
+                    console.print("     [cyan]curl {}/health[/cyan]".format(self.base_url))
+                    console.print("  2. Restart the server:")
+                    console.print("     [cyan]python src/mcp_server/standalone_server.py[/cyan]")
+                    console.print("  3. Check server logs for initialization errors")
                 else:
                     console.print(f"[red]Error: {response.status_code}[/red]")
+                    try:
+                        error_detail = response.json()
+                        if 'detail' in error_detail:
+                            console.print(f"[red]Details: {error_detail['detail']}[/red]")
+                    except:
+                        console.print(f"[red]Response: {response.text[:200]}[/red]")
 
+            except requests.exceptions.ConnectionError:
+                console.print(f"[red]Connection Error: Could not connect to server at {self.base_url}[/red]")
+                console.print("[yellow]The server may not be running. Try starting it with:[/yellow]")
+                console.print("  [cyan]python src/mcp_server/standalone_server.py[/cyan]")
             except Exception as e:
                 console.print(f"[red]Error: {e}[/red]")
 
