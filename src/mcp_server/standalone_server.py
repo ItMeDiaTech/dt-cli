@@ -829,8 +829,8 @@ def main():
     parser.add_argument(
         '--port',
         type=int,
-        default=8765,
-        help='Server port (default: 8765)'
+        default=58432,
+        help='Server port (default: 58432)'
     )
     parser.add_argument(
         '--config',
