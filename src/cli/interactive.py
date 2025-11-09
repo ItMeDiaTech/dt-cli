@@ -435,6 +435,24 @@ class DTCliInteractive:
         console.print("[yellow]Server not running. Starting server...[/yellow]")
 
         try:
+            # Check for required dependencies first
+            missing_deps = []
+            required_modules = ['fastapi', 'uvicorn', 'chromadb', 'langchain', 'pydantic']
+
+            for module in required_modules:
+                try:
+                    __import__(module)
+                except ImportError:
+                    missing_deps.append(module)
+
+            if missing_deps:
+                console.print(f"[red]Missing required dependencies: {', '.join(missing_deps)}[/red]")
+                console.print("\n[yellow]Please install dependencies first:[/yellow]")
+                console.print("  [cyan]pip3 install -r requirements.txt[/cyan]")
+                console.print("\nOr install missing packages individually:")
+                console.print(f"  [cyan]pip3 install {' '.join(missing_deps)}[/cyan]")
+                return False
+
             # Find the server script
             server_script = os.path.join(os.path.dirname(__file__), "..", "mcp_server", "standalone_server.py")
 
@@ -866,7 +884,7 @@ class DTCliInteractive:
                     console.print("  2. The server failed to initialize completely")
                     console.print(f"\n[cyan]Current server URL: {self.base_url}[/cyan]")
                     console.print("\n[yellow]Try restarting the server:[/yellow]")
-                    console.print("  [cyan]python src/mcp_server/standalone_server.py[/cyan]")
+                    console.print("  [cyan]python3 src/mcp_server/standalone_server.py[/cyan]")
                 else:
                     console.print(f"[red]Error: {response.status_code}[/red]")
                     try:
@@ -879,7 +897,7 @@ class DTCliInteractive:
             except requests.exceptions.ConnectionError:
                 console.print(f"[red]Connection Error: Could not connect to server at {self.base_url}[/red]")
                 console.print("[yellow]The server may not be running. Try starting it with:[/yellow]")
-                console.print("  [cyan]python src/mcp_server/standalone_server.py[/cyan]")
+                console.print("  [cyan]python3 src/mcp_server/standalone_server.py[/cyan]")
             except Exception as e:
                 console.print(f"[red]Error: {e}[/red]")
 
@@ -1206,7 +1224,7 @@ Welcome to the **100% Open Source** RAG/MAF/LLM System with AI-powered memory!
                     console.print("  1. Check if server is running:")
                     console.print("     [cyan]curl {}/health[/cyan]".format(self.base_url))
                     console.print("  2. Restart the server:")
-                    console.print("     [cyan]python src/mcp_server/standalone_server.py[/cyan]")
+                    console.print("     [cyan]python3 src/mcp_server/standalone_server.py[/cyan]")
                     console.print("  3. Check server logs for initialization errors")
                 else:
                     console.print(f"[red]Error: {response.status_code}[/red]")
@@ -1222,7 +1240,7 @@ Welcome to the **100% Open Source** RAG/MAF/LLM System with AI-powered memory!
             except requests.exceptions.ConnectionError:
                 console.print(f"[red]Connection Error: Could not connect to server at {self.base_url}[/red]")
                 console.print("[yellow]The server may not be running. Try starting it with:[/yellow]")
-                console.print("  [cyan]python src/mcp_server/standalone_server.py[/cyan]")
+                console.print("  [cyan]python3 src/mcp_server/standalone_server.py[/cyan]")
             except Exception as e:
                 console.print(f"[red]Error: {e}[/red]")
 
@@ -1393,7 +1411,7 @@ Welcome to the **100% Open Source** RAG/MAF/LLM System with AI-powered memory!
                     console.print("  1. Check if server is running:")
                     console.print("     [cyan]curl {}/health[/cyan]".format(self.base_url))
                     console.print("  2. Restart the server:")
-                    console.print("     [cyan]python src/mcp_server/standalone_server.py[/cyan]")
+                    console.print("     [cyan]python3 src/mcp_server/standalone_server.py[/cyan]")
                     console.print("  3. Check server logs for initialization errors")
                 else:
                     console.print(f"[red]Error: {response.status_code}[/red]")
@@ -1407,7 +1425,7 @@ Welcome to the **100% Open Source** RAG/MAF/LLM System with AI-powered memory!
             except requests.exceptions.ConnectionError:
                 console.print(f"[red]Connection Error: Could not connect to server at {self.base_url}[/red]")
                 console.print("[yellow]The server may not be running. Try starting it with:[/yellow]")
-                console.print("  [cyan]python src/mcp_server/standalone_server.py[/cyan]")
+                console.print("  [cyan]python3 src/mcp_server/standalone_server.py[/cyan]")
             except Exception as e:
                 console.print(f"[red]Error: {e}[/red]")
 
@@ -1574,12 +1592,12 @@ See README.md and PHASE*.md files for detailed documentation.
                 if not self.start_server():
                     console.print("[bold red]Server is not running and could not be started![/bold red]")
                     console.print("\nPlease start the server manually:")
-                    console.print("  [cyan]python src/mcp_server/standalone_server.py[/cyan]")
+                    console.print("  [cyan]python3 src/mcp_server/standalone_server.py[/cyan]")
                     return
             else:
                 console.print("[bold red]Server is not running![/bold red]")
                 console.print("\nPlease start the server first:")
-                console.print("  [cyan]python src/mcp_server/standalone_server.py[/cyan]")
+                console.print("  [cyan]python3 src/mcp_server/standalone_server.py[/cyan]")
                 return
 
         # Select project folder
