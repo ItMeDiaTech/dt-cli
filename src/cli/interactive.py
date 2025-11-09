@@ -34,7 +34,7 @@ import time
 import socket
 import re
 from pathlib import Path
-from enum import Enum
+from enum import Enum, IntEnum
 from dataclasses import dataclass, field
 from datetime import datetime
 
@@ -48,11 +48,30 @@ except ImportError:
 console = Console()
 
 
-class VerbosityLevel(Enum):
+class VerbosityLevel(IntEnum):
     """Verbosity levels for output control."""
-    QUIET = "quiet"
-    NORMAL = "normal"
-    VERBOSE = "verbose"
+    QUIET = 0
+    NORMAL = 1
+    VERBOSE = 2
+
+    @classmethod
+    def from_string(cls, value: str) -> 'VerbosityLevel':
+        """Convert string to VerbosityLevel."""
+        mapping = {
+            "quiet": cls.QUIET,
+            "normal": cls.NORMAL,
+            "verbose": cls.VERBOSE
+        }
+        return mapping.get(value.lower(), cls.NORMAL)
+
+    def to_string(self) -> str:
+        """Convert VerbosityLevel to string name."""
+        mapping = {
+            self.QUIET: "quiet",
+            self.NORMAL: "normal",
+            self.VERBOSE: "verbose"
+        }
+        return mapping.get(self, "normal")
 
 
 class IntentType(Enum):
@@ -407,12 +426,12 @@ class DTCliInteractive:
 
         if cmd == "/verbosity":
             if len(parts) < 2:
-                console.print(f"[yellow]Current verbosity: {self.verbosity.value}[/yellow]")
+                console.print(f"[yellow]Current verbosity: {self.verbosity.to_string()}[/yellow]")
                 console.print("Usage: /verbosity <quiet|normal|verbose>")
             else:
                 level = parts[1].lower()
                 if level in ["quiet", "normal", "verbose"]:
-                    self.verbosity = VerbosityLevel(level)
+                    self.verbosity = VerbosityLevel.from_string(level)
                     console.print(f"[green]Verbosity set to: {level}[/green]")
                 else:
                     console.print("[red]Invalid verbosity level. Use: quiet, normal, or verbose[/red]")
@@ -1136,7 +1155,7 @@ def main():
         base_url=args.server,
         auto_start_server=not args.no_auto_start
     )
-    cli.verbosity = VerbosityLevel(args.verbosity)
+    cli.verbosity = VerbosityLevel.from_string(args.verbosity)
     cli.run()
 
 
