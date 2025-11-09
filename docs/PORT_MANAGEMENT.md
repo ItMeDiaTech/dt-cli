@@ -181,7 +181,7 @@ python src/mcp_server/standalone_server.py --auto-port &
 You can set a default port in your environment:
 
 ```bash
-export DT_CLI_PORT=9000
+export DT_CLI_PORT=58432
 ```
 
 Or in your shell config (~/.bashrc, ~/.zshrc):

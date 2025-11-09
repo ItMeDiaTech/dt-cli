@@ -449,7 +449,7 @@ class DTCliInteractive:
             # base_url format: http://host:port
             url_parts = self.base_url.replace("http://", "").replace("https://", "").split(":")
             host = url_parts[0]
-            preferred_port = int(url_parts[1]) if len(url_parts) > 1 else 8765
+            preferred_port = int(url_parts[1]) if len(url_parts) > 1 else 58432
 
             # Find available port
             try:
