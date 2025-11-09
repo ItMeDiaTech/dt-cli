@@ -380,8 +380,13 @@ class StandaloneMCPServer:
                     return result
 
             except Exception as e:
-                logger.error(f"Query error: {e}")
-                raise HTTPException(status_code=500, detail=str(e))
+                import traceback
+                error_trace = traceback.format_exc()
+                logger.error(f"Query error: {e}\n{error_trace}")
+                raise HTTPException(
+                    status_code=500,
+                    detail=f"{type(e).__name__}: {str(e)}"
+                )
 
         @self.app.post("/generate")
         async def generate(request: GenerateRequest):
@@ -413,8 +418,13 @@ class StandaloneMCPServer:
                     }
 
             except Exception as e:
-                logger.error(f"Generation error: {e}")
-                raise HTTPException(status_code=500, detail=str(e))
+                import traceback
+                error_trace = traceback.format_exc()
+                logger.error(f"Generation error: {e}\n{error_trace}")
+                raise HTTPException(
+                    status_code=500,
+                    detail=f"{type(e).__name__}: {str(e)}"
+                )
 
         @self.app.post("/rag/index")
         async def rag_index(path: Optional[str] = None):
@@ -423,8 +433,13 @@ class StandaloneMCPServer:
                 # TODO: Implement indexing
                 return {"status": "indexing", "path": path or "."}
             except Exception as e:
-                logger.error(f"Indexing error: {e}")
-                raise HTTPException(status_code=500, detail=str(e))
+                import traceback
+                error_trace = traceback.format_exc()
+                logger.error(f"Indexing error: {e}\n{error_trace}")
+                raise HTTPException(
+                    status_code=500,
+                    detail=f"{type(e).__name__}: {str(e)}"
+                )
 
         @self.app.post("/rag/search")
         async def rag_search(request: QueryRequest):
@@ -441,8 +456,13 @@ class StandaloneMCPServer:
                 }
 
             except Exception as e:
-                logger.error(f"RAG search error: {e}")
-                raise HTTPException(status_code=500, detail=str(e))
+                import traceback
+                error_trace = traceback.format_exc()
+                logger.error(f"RAG search error: {e}\n{error_trace}")
+                raise HTTPException(
+                    status_code=500,
+                    detail=f"{type(e).__name__}: {str(e)}"
+                )
 
         @self.app.get("/config")
         async def get_config():
@@ -462,8 +482,13 @@ class StandaloneMCPServer:
                 self.config.reload()
                 return {"status": "reloaded", "config": str(self.config)}
             except Exception as e:
-                logger.error(f"Config reload error: {e}")
-                raise HTTPException(status_code=500, detail=str(e))
+                import traceback
+                error_trace = traceback.format_exc()
+                logger.error(f"Config reload error: {e}\n{error_trace}")
+                raise HTTPException(
+                    status_code=500,
+                    detail=f"{type(e).__name__}: {str(e)}"
+                )
 
         @self.app.get("/auto-trigger/stats")
         async def get_trigger_stats():
@@ -521,8 +546,13 @@ class StandaloneMCPServer:
                 return analysis.to_dict()
 
             except Exception as e:
-                logger.error(f"Debug error: {e}")
-                raise HTTPException(status_code=500, detail=str(e))
+                import traceback
+                error_trace = traceback.format_exc()
+                logger.error(f"Debug error: {e}\n{error_trace}")
+                raise HTTPException(
+                    status_code=500,
+                    detail=f"{type(e).__name__}: {str(e)}"
+                )
 
         @self.app.post("/review")
         async def review_code(request: ReviewRequest):
@@ -546,8 +576,13 @@ class StandaloneMCPServer:
                 return review.to_dict()
 
             except Exception as e:
-                logger.error(f"Review error: {e}")
-                raise HTTPException(status_code=500, detail=str(e))
+                import traceback
+                error_trace = traceback.format_exc()
+                logger.error(f"Review error: {e}\n{error_trace}")
+                raise HTTPException(
+                    status_code=500,
+                    detail=f"{type(e).__name__}: {str(e)}"
+                )
 
         @self.app.post("/graph/build")
         async def build_graph(request: GraphBuildRequest):
@@ -580,8 +615,13 @@ class StandaloneMCPServer:
                 }
 
             except Exception as e:
-                logger.error(f"Graph build error: {e}")
-                raise HTTPException(status_code=500, detail=str(e))
+                import traceback
+                error_trace = traceback.format_exc()
+                logger.error(f"Graph build error: {e}\n{error_trace}")
+                raise HTTPException(
+                    status_code=500,
+                    detail=f"{type(e).__name__}: {str(e)}"
+                )
 
         @self.app.post("/graph/query")
         async def query_graph(request: GraphQueryRequest):
@@ -660,8 +700,13 @@ class StandaloneMCPServer:
             except HTTPException:
                 raise
             except Exception as e:
-                logger.error(f"Graph query error: {e}")
-                raise HTTPException(status_code=500, detail=str(e))
+                import traceback
+                error_trace = traceback.format_exc()
+                logger.error(f"Graph query error: {e}\n{error_trace}")
+                raise HTTPException(
+                    status_code=500,
+                    detail=f"{type(e).__name__}: {str(e)}"
+                )
 
         @self.app.get("/graph/stats")
         async def get_graph_stats():
@@ -692,8 +737,13 @@ class StandaloneMCPServer:
                 return evaluation.to_dict()
 
             except Exception as e:
-                logger.error(f"Evaluation error: {e}")
-                raise HTTPException(status_code=500, detail=str(e))
+                import traceback
+                error_trace = traceback.format_exc()
+                logger.error(f"Evaluation error: {e}\n{error_trace}")
+                raise HTTPException(
+                    status_code=500,
+                    detail=f"{type(e).__name__}: {str(e)}"
+                )
 
         @self.app.post("/hybrid-search")
         async def hybrid_search(request: HybridSearchRequest):
@@ -735,8 +785,13 @@ class StandaloneMCPServer:
                 }
 
             except Exception as e:
-                logger.error(f"Hybrid search error: {e}")
-                raise HTTPException(status_code=500, detail=str(e))
+                import traceback
+                error_trace = traceback.format_exc()
+                logger.error(f"Hybrid search error: {e}\n{error_trace}")
+                raise HTTPException(
+                    status_code=500,
+                    detail=f"{type(e).__name__}: {str(e)}"
+                )
 
         @self.app.get("/evaluation/stats")
         async def get_evaluation_stats():

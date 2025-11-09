@@ -1354,8 +1354,9 @@ Welcome to the **100% Open Source** RAG/MAF/LLM System with AI-powered memory!
                         error_detail = response.json()
                         if 'detail' in error_detail:
                             console.print(f"[red]Details: {error_detail['detail']}[/red]")
-                    except:
-                        console.print(f"[red]Response: {response.text[:200]}[/red]")
+                    except Exception as e:
+                        logger.error(f"Failed to parse error response: {e}")
+                        console.print(f"[red]Response: {response.text[:500]}[/red]")
 
             except requests.exceptions.Timeout:
                 console.print("[red]Request timed out. Codebase review may take longer for large projects.[/red]")
@@ -1542,8 +1543,9 @@ Welcome to the **100% Open Source** RAG/MAF/LLM System with AI-powered memory!
                         error_detail = response.json()
                         if 'detail' in error_detail:
                             console.print(f"[red]Details: {error_detail['detail']}[/red]")
-                    except:
-                        console.print(f"[red]Response: {response.text[:200]}[/red]")
+                    except Exception as e:
+                        logger.error(f"Failed to parse error response: {e}")
+                        console.print(f"[red]Response: {response.text[:500]}[/red]")
 
             except requests.exceptions.ConnectionError:
                 console.print(f"[red]Connection Error: Could not connect to server at {self.base_url}[/red]")
