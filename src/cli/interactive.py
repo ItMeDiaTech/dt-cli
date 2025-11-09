@@ -3,6 +3,12 @@ Interactive Terminal Interface for dt-cli.
 
 Provides a beautiful, user-friendly TUI for interacting with the RAG/MAF system
 without needing to know API endpoints or curl commands.
+
+Features:
+- Command history with up/down arrow navigation
+- Intelligent mode (bypass menu, go directly to RAG)
+- Auto-start server if not running
+- No emojis in interface
 """
 
 from rich.console import Console
@@ -18,8 +24,68 @@ from typing import Optional, Dict, Any, List
 import requests
 import sys
 import os
+import subprocess
+import time
+import socket
+
+try:
+    from prompt_toolkit import PromptSession
+    from prompt_toolkit.history import FileHistory
+    PROMPT_TOOLKIT_AVAILABLE = True
+except ImportError:
+    PROMPT_TOOLKIT_AVAILABLE = False
 
 console = Console()
+
+
+def is_port_available(host: str, port: int) -> bool:
+    """
+    Check if a port is available.
+
+    Args:
+        host: Host address
+        port: Port number
+
+    Returns:
+        True if port is available, False otherwise
+    """
+    try:
+        with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
+            s.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+            s.bind((host, port))
+            return True
+    except OSError:
+        return False
+
+
+def find_available_port(host: str, preferred_port: int, max_attempts: int = 10) -> int:
+    """
+    Find an available port, starting with preferred port.
+
+    Args:
+        host: Host address
+        preferred_port: Preferred port to try first
+        max_attempts: Maximum number of ports to try
+
+    Returns:
+        Available port number
+
+    Raises:
+        RuntimeError: If no available port found
+    """
+    # Try preferred port first
+    if is_port_available(host, preferred_port):
+        return preferred_port
+
+    # Try adjacent ports
+    for offset in range(1, max_attempts):
+        port = preferred_port + offset
+        if port > 65535:
+            break
+        if is_port_available(host, port):
+            return port
+
+    raise RuntimeError(f"Could not find an available port near {preferred_port}")
 
 
 class DTCliInteractive:
@@ -27,16 +93,26 @@ class DTCliInteractive:
     Interactive terminal interface for dt-cli.
     """
 
-    def __init__(self, base_url: str = "http://localhost:8765"):
+    def __init__(self, base_url: str = "http://localhost:8765", auto_start_server: bool = True):
         """
         Initialize interactive CLI.
 
         Args:
             base_url: Base URL for the dt-cli server
+            auto_start_server: Whether to auto-start server if not running
         """
         self.base_url = base_url
         self.session = requests.Session()
         self.session.headers.update({"Content-Type": "application/json"})
+        self.auto_start_server = auto_start_server
+        self.server_process = None
+
+        # Setup command history
+        if PROMPT_TOOLKIT_AVAILABLE:
+            history_file = os.path.expanduser("~/.dt_cli_history")
+            self.prompt_session = PromptSession(history=FileHistory(history_file))
+        else:
+            self.prompt_session = None
 
     def check_server(self) -> bool:
         """Check if server is running."""
@@ -44,6 +120,61 @@ class DTCliInteractive:
             response = self.session.get(f"{self.base_url}/health", timeout=2)
             return response.status_code == 200
         except:
+            return False
+
+    def start_server(self) -> bool:
+        """Start the server if not running."""
+        console.print("[yellow]Server not running. Starting server...[/yellow]")
+
+        try:
+            # Find the server script
+            server_script = os.path.join(os.path.dirname(__file__), "..", "mcp_server", "standalone_server.py")
+
+            if not os.path.exists(server_script):
+                server_script = "src/mcp_server/standalone_server.py"
+
+            if not os.path.exists(server_script):
+                console.print("[red]Server script not found![/red]")
+                return False
+
+            # Extract host and port from base_url
+            # base_url format: http://host:port
+            url_parts = self.base_url.replace("http://", "").replace("https://", "").split(":")
+            host = url_parts[0]
+            preferred_port = int(url_parts[1]) if len(url_parts) > 1 else 8765
+
+            # Find available port
+            try:
+                actual_port = find_available_port(host, preferred_port)
+                if actual_port != preferred_port:
+                    console.print(f"[yellow]Port {preferred_port} in use, using port {actual_port}[/yellow]")
+                    # Update base_url to use the actual port
+                    self.base_url = f"http://{host}:{actual_port}"
+            except RuntimeError as e:
+                console.print(f"[red]{e}[/red]")
+                return False
+
+            # Start server as background process with the chosen port
+            self.server_process = subprocess.Popen(
+                [sys.executable, server_script, "--port", str(actual_port), "--host", host],
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+                text=True
+            )
+
+            # Wait for server to start (max 10 seconds)
+            console.print(f"[cyan]Waiting for server to start on port {actual_port}...[/cyan]")
+            for i in range(10):
+                time.sleep(1)
+                if self.check_server():
+                    console.print(f"[green]Server started successfully on {self.base_url}![/green]")
+                    return True
+
+            console.print("[red]Server failed to start in time[/red]")
+            return False
+
+        except Exception as e:
+            console.print(f"[red]Failed to start server: {e}[/red]")
             return False
 
     def show_welcome(self):
@@ -54,12 +185,12 @@ class DTCliInteractive:
 Welcome to the **100% Open Source** RAG/MAF/LLM System!
 
 ## Available Features:
-- 🔍 **RAG Queries** - Ask questions about your codebase
-- 🐛 **Debug Errors** - Analyze errors and get fix suggestions
-- ✅ **Code Review** - Automated code quality and security checks
-- 🕸️  **Knowledge Graph** - Explore code dependencies and relationships
-- 📊 **Evaluation** - Measure RAG quality with RAGAS metrics
-- 🔎 **Hybrid Search** - Semantic + keyword search
+- **RAG Queries** - Ask questions about your codebase
+- **Debug Errors** - Analyze errors and get fix suggestions
+- **Code Review** - Automated code quality and security checks
+- **Knowledge Graph** - Explore code dependencies and relationships
+- **Evaluation** - Measure RAG quality with RAGAS metrics
+- **Hybrid Search** - Semantic + keyword search
 
 Type `help` for available commands or choose from the menu below.
 """
@@ -72,16 +203,16 @@ Type `help` for available commands or choose from the menu below.
         table.add_column("Description", style="white")
 
         options = [
-            ("1", "🔍 Ask a Question (RAG Query)"),
-            ("2", "🐛 Debug an Error"),
-            ("3", "✅ Review Code"),
-            ("4", "🕸️  Explore Knowledge Graph"),
-            ("5", "📊 Evaluate RAG Quality"),
-            ("6", "🔎 Hybrid Search"),
-            ("7", "📈 View Statistics"),
-            ("8", "⚙️  Settings"),
-            ("9", "❓ Help"),
-            ("0", "🚪 Exit")
+            ("1", "Ask a Question (RAG Query)"),
+            ("2", "Debug an Error"),
+            ("3", "Review Code"),
+            ("4", "Explore Knowledge Graph"),
+            ("5", "Evaluate RAG Quality"),
+            ("6", "Hybrid Search"),
+            ("7", "View Statistics"),
+            ("8", "Settings"),
+            ("9", "Help"),
+            ("0", "Exit")
         ]
 
         for opt, desc in options:
@@ -89,19 +220,36 @@ Type `help` for available commands or choose from the menu below.
 
         console.print(table)
 
-    def ask_question(self):
+    def get_input_with_history(self, prompt_text: str, default: str = "") -> str:
+        """Get user input with command history support."""
+        if self.prompt_session:
+            try:
+                return self.prompt_session.prompt(prompt_text + ": ", default=default)
+            except (KeyboardInterrupt, EOFError):
+                raise
+        else:
+            if default:
+                return input(f"{prompt_text} [{default}]: ") or default
+            else:
+                return input(f"{prompt_text}: ")
+
+    def ask_question(self, query: Optional[str] = None):
         """Handle RAG query."""
         console.print("\n[bold cyan]Ask a Question[/bold cyan]", style="bold")
-        console.print("━" * 60)
+        console.print("=" * 60)
 
-        query = Prompt.ask("💬 [bold]Your question[/bold]")
+        if not query:
+            if self.prompt_session:
+                query = self.get_input_with_history("[bold]Your question[/bold]")
+            else:
+                query = Prompt.ask("[bold]Your question[/bold]")
 
         if not query.strip():
-            console.print("[yellow]⚠️  Empty query![/yellow]")
+            console.print("[yellow]Empty query![/yellow]")
             return
 
         # Ask for context files
-        add_files = Confirm.ask("📁 Add specific files to context?", default=False)
+        add_files = Confirm.ask("Add specific files to context?", default=False)
         context_files = []
 
         if add_files:
@@ -116,7 +264,7 @@ Type `help` for available commands or choose from the menu below.
             TextColumn("[progress.description]{task.description}"),
             console=console
         ) as progress:
-            task = progress.add_task("🔍 Searching codebase...", total=None)
+            task = progress.add_task("Searching codebase...", total=None)
 
             try:
                 response = self.session.post(
@@ -135,7 +283,7 @@ Type `help` for available commands or choose from the menu below.
                     result = response.json()
 
                     # Show results
-                    console.print("\n[bold green]✓ Answer:[/bold green]")
+                    console.print("\n[bold green]Answer:[/bold green]")
                     console.print(Panel(result['response'], border_style="green"))
 
                     # Show metadata
@@ -148,17 +296,19 @@ Type `help` for available commands or choose from the menu below.
                         console.print(f"[dim]Contexts used: {result['context_used']}[/dim]")
 
                 else:
-                    console.print(f"[red]❌ Error: {response.status_code}[/red]")
+                    console.print(f"[red]Error: {response.status_code}[/red]")
+                    if response.status_code == 404:
+                        console.print("[yellow]The /query endpoint was not found. Make sure the server is running correctly.[/yellow]")
 
             except requests.exceptions.Timeout:
-                console.print("[red]❌ Request timed out[/red]")
+                console.print("[red]Request timed out[/red]")
             except Exception as e:
-                console.print(f"[red]❌ Error: {e}[/red]")
+                console.print(f"[red]Error: {e}[/red]")
 
     def debug_error(self):
         """Handle error debugging."""
         console.print("\n[bold red]Debug an Error[/bold red]", style="bold")
-        console.print("━" * 60)
+        console.print("=" * 60)
 
         console.print("[yellow]Paste your error output (press Ctrl+D or Ctrl+Z when done):[/yellow]")
 
@@ -173,7 +323,7 @@ Type `help` for available commands or choose from the menu below.
         error_output = "\n".join(lines)
 
         if not error_output.strip():
-            console.print("[yellow]⚠️  No error provided![/yellow]")
+            console.print("[yellow]No error provided![/yellow]")
             return
 
         with Progress(
@@ -181,7 +331,7 @@ Type `help` for available commands or choose from the menu below.
             TextColumn("[progress.description]{task.description}"),
             console=console
         ) as progress:
-            task = progress.add_task("🐛 Analyzing error...", total=None)
+            task = progress.add_task("Analyzing error...", total=None)
 
             try:
                 response = self.session.post(
@@ -199,7 +349,7 @@ Type `help` for available commands or choose from the menu below.
                     result = response.json()
 
                     # Show error context
-                    console.print("\n[bold]📍 Error Location:[/bold]")
+                    console.print("\n[bold]Error Location:[/bold]")
                     error_ctx = result['error_context']
                     console.print(f"  Type: {error_ctx['error_type']}")
                     if error_ctx.get('file_path'):
@@ -208,38 +358,38 @@ Type `help` for available commands or choose from the menu below.
 
                     # Show code snippet
                     if error_ctx.get('code_snippet'):
-                        console.print("\n[bold]📄 Code Context:[/bold]")
+                        console.print("\n[bold]Code Context:[/bold]")
                         syntax = Syntax(error_ctx['code_snippet'], "python", line_numbers=True)
                         console.print(syntax)
 
                     # Show root cause
-                    console.print(f"\n[bold red]🔍 Root Cause:[/bold red]")
+                    console.print(f"\n[bold red]Root Cause:[/bold red]")
                     console.print(Panel(result['root_cause'], border_style="red"))
 
                     # Show explanation
-                    console.print(f"\n[bold]💡 Explanation:[/bold]")
+                    console.print(f"\n[bold]Explanation:[/bold]")
                     console.print(result['explanation'])
 
                     # Show fixes
-                    console.print(f"\n[bold green]🔧 Suggested Fixes:[/bold green]")
+                    console.print(f"\n[bold green]Suggested Fixes:[/bold green]")
                     for i, fix in enumerate(result['suggested_fixes'], 1):
                         console.print(f"  {i}. {fix}")
 
                     console.print(f"\n[dim]Confidence: {result['confidence']:.0%}[/dim]")
 
                 else:
-                    console.print(f"[red]❌ Error: {response.status_code}[/red]")
+                    console.print(f"[red]Error: {response.status_code}[/red]")
 
             except Exception as e:
-                console.print(f"[red]❌ Error: {e}[/red]")
+                console.print(f"[red]Error: {e}[/red]")
 
     def review_code(self):
         """Handle code review."""
         console.print("\n[bold magenta]Review Code[/bold magenta]", style="bold")
-        console.print("━" * 60)
+        console.print("=" * 60)
 
         # Get code input
-        file_path = Prompt.ask("📁 [bold]File path to review[/bold] (or press Enter to paste code)")
+        file_path = Prompt.ask("[bold]File path to review[/bold] (or press Enter to paste code)")
 
         if file_path.strip():
             # Read from file
@@ -247,7 +397,7 @@ Type `help` for available commands or choose from the menu below.
                 with open(file_path, 'r') as f:
                     code = f.read()
             except Exception as e:
-                console.print(f"[red]❌ Could not read file: {e}[/red]")
+                console.print(f"[red]Could not read file: {e}[/red]")
                 return
         else:
             # Paste code
@@ -263,7 +413,7 @@ Type `help` for available commands or choose from the menu below.
             file_path = "pasted_code.py"
 
         if not code.strip():
-            console.print("[yellow]⚠️  No code provided![/yellow]")
+            console.print("[yellow]No code provided![/yellow]")
             return
 
         with Progress(
@@ -271,7 +421,7 @@ Type `help` for available commands or choose from the menu below.
             TextColumn("[progress.description]{task.description}"),
             console=console
         ) as progress:
-            task = progress.add_task("✅ Reviewing code...", total=None)
+            task = progress.add_task("Reviewing code...", total=None)
 
             try:
                 response = self.session.post(
@@ -293,12 +443,12 @@ Type `help` for available commands or choose from the menu below.
                     score = result['overall_score']
                     score_color = "green" if score >= 7 else "yellow" if score >= 5 else "red"
 
-                    console.print(f"\n[bold]📊 Quality Score: [{score_color}]{score:.1f}/10[/{score_color}][/bold]")
+                    console.print(f"\n[bold]Quality Score: [{score_color}]{score:.1f}/10[/{score_color}][/bold]")
                     console.print(f"[dim]{result['summary']}[/dim]")
 
                     # Show issues
                     if result['issues']:
-                        console.print(f"\n[bold]⚠️  Issues Found ({len(result['issues'])}):[/bold]")
+                        console.print(f"\n[bold]Issues Found ({len(result['issues'])}):[/bold]")
 
                         # Group by severity
                         by_severity = {}
@@ -322,7 +472,7 @@ Type `help` for available commands or choose from the menu below.
                                 console.print(f"\n[bold {sev_color}]{severity.upper()} ({len(by_severity[severity])})[/bold {sev_color}]")
 
                                 for issue in by_severity[severity][:5]:  # Show first 5
-                                    console.print(f"  • {issue['title']}")
+                                    console.print(f"  - {issue['title']}")
                                     if issue.get('line_number'):
                                         console.print(f"    Line {issue['line_number']}: {issue['description']}")
                                     else:
@@ -334,10 +484,10 @@ Type `help` for available commands or choose from the menu below.
                                     console.print(f"  [dim]... and {len(by_severity[severity]) - 5} more[/dim]")
 
                     else:
-                        console.print("\n[bold green]✓ No issues found![/bold green]")
+                        console.print("\n[bold green]No issues found![/bold green]")
 
                     # Show metrics
-                    console.print(f"\n[bold]📈 Metrics:[/bold]")
+                    console.print(f"\n[bold]Metrics:[/bold]")
                     metrics = result['metrics']
                     console.print(f"  Total lines: {metrics['total_lines']}")
                     console.print(f"  Code lines: {metrics['code_lines']}")
@@ -345,455 +495,10 @@ Type `help` for available commands or choose from the menu below.
                     console.print(f"  Issues: {metrics['total_issues']}")
 
                 else:
-                    console.print(f"[red]❌ Error: {response.status_code}[/red]")
+                    console.print(f"[red]Error: {response.status_code}[/red]")
 
             except Exception as e:
-                console.print(f"[red]❌ Error: {e}[/red]")
-
-    def explore_graph(self):
-        """Handle knowledge graph exploration."""
-        console.print("\n[bold blue]Explore Knowledge Graph[/bold blue]", style="bold")
-        console.print("━" * 60)
-
-        # Check if graph is built
-        try:
-            stats_response = self.session.get(f"{self.base_url}/graph/stats", timeout=5)
-            if stats_response.status_code == 200:
-                stats = stats_response.json()
-                if stats['total_entities'] == 0:
-                    console.print("[yellow]⚠️  Knowledge graph is empty![/yellow]")
-                    if Confirm.ask("Build knowledge graph now?", default=True):
-                        self.build_graph()
-                        return
-                    else:
-                        return
-        except:
-            console.print("[red]❌ Could not check graph status[/red]")
-            return
-
-        # Choose query type
-        console.print("\n[bold]Query Types:[/bold]")
-        console.print("  1. Dependencies (what does X depend on?)")
-        console.print("  2. Dependents (what depends on X?)")
-        console.print("  3. Usages (where is X used?)")
-        console.print("  4. Impact Analysis (what breaks if I change X?)")
-
-        choice = Prompt.ask("Choose query type", choices=["1", "2", "3", "4"])
-
-        query_types = {
-            "1": "dependencies",
-            "2": "dependents",
-            "3": "usages",
-            "4": "impact"
-        }
-        query_type = query_types[choice]
-
-        # Get entity
-        entity_name = Prompt.ask("Entity name (e.g., function or class name)")
-        entity_type = Prompt.ask(
-            "Entity type (optional)",
-            choices=["", "function", "class", "method", "module"],
-            default=""
-        )
-
-        with Progress(
-            SpinnerColumn(),
-            TextColumn("[progress.description]{task.description}"),
-            console=console
-        ) as progress:
-            task = progress.add_task("🕸️  Querying knowledge graph...", total=None)
-
-            try:
-                response = self.session.post(
-                    f"{self.base_url}/graph/query",
-                    json={
-                        "entity_name": entity_name,
-                        "entity_type": entity_type if entity_type else None,
-                        "query_type": query_type
-                    },
-                    timeout=30
-                )
-
-                progress.update(task, completed=True)
-
-                if response.status_code == 200:
-                    result = response.json()
-
-                    if query_type == "impact":
-                        # Impact analysis
-                        console.print(f"\n[bold]📊 Impact Analysis for '{entity_name}':[/bold]")
-                        console.print(f"  Direct impact: {result['direct_impact']} entities")
-                        console.print(f"  Total impact: {result['total_impact']} entities")
-
-                        if result.get('affected_by_type'):
-                            console.print(f"\n[bold]By Type:[/bold]")
-                            for etype, count in result['affected_by_type'].items():
-                                console.print(f"  {etype}: {count}")
-
-                        if result.get('affected_by_file'):
-                            console.print(f"\n[bold]By File:[/bold]")
-                            for file, count in sorted(result['affected_by_file'].items(), key=lambda x: -x[1])[:10]:
-                                console.print(f"  {file}: {count}")
-
-                        if result.get('affected_entities'):
-                            console.print(f"\n[bold]Affected Entities (top 10):[/bold]")
-                            for entity in result['affected_entities'][:10]:
-                                console.print(f"  • {entity['name']} ({entity['type']}) in {entity['file']}")
-
-                    else:
-                        # Other queries
-                        console.print(f"\n[bold]Results for '{entity_name}' ({query_type}):[/bold]")
-
-                        if 'results' in result:
-                            results = result['results']
-                            if results:
-                                for item in results[:20]:  # Show first 20
-                                    if 'name' in item:
-                                        console.print(f"  • {item['name']} ({item.get('type', 'unknown')}) in {item.get('file', 'unknown')}")
-                                    elif 'used_by' in item:
-                                        console.print(f"  • {item['used_by']} ({item.get('type', 'unknown')}) in {item.get('file', 'unknown')}:{item.get('line', '?')}")
-
-                                if len(results) > 20:
-                                    console.print(f"  [dim]... and {len(results) - 20} more[/dim]")
-                            else:
-                                console.print("  [yellow]No results found[/yellow]")
-
-                elif response.status_code == 404:
-                    console.print(f"[yellow]⚠️  Entity '{entity_name}' not found in graph[/yellow]")
-                else:
-                    console.print(f"[red]❌ Error: {response.status_code}[/red]")
-
-            except Exception as e:
-                console.print(f"[red]❌ Error: {e}[/red]")
-
-    def build_graph(self):
-        """Build knowledge graph."""
-        path = Prompt.ask("📁 [bold]Path to analyze[/bold]", default="src/")
-
-        with Progress(
-            SpinnerColumn(),
-            TextColumn("[progress.description]{task.description}"),
-            console=console
-        ) as progress:
-            task = progress.add_task("🕸️  Building knowledge graph...", total=None)
-
-            try:
-                response = self.session.post(
-                    f"{self.base_url}/graph/build",
-                    json={"path": path},
-                    timeout=120
-                )
-
-                progress.update(task, completed=True)
-
-                if response.status_code == 200:
-                    result = response.json()
-                    stats = result['stats']
-
-                    console.print("\n[bold green]✓ Knowledge graph built successfully![/bold green]")
-                    console.print(f"\n[bold]📊 Statistics:[/bold]")
-                    console.print(f"  Entities: {stats['total_entities']}")
-                    console.print(f"  Relationships: {stats['total_relationships']}")
-
-                    if 'entities_by_type' in stats:
-                        console.print(f"\n[bold]By Type:[/bold]")
-                        for etype, count in stats['entities_by_type'].items():
-                            console.print(f"  {etype}: {count}")
-
-                else:
-                    console.print(f"[red]❌ Error: {response.status_code}[/red]")
-
-            except Exception as e:
-                console.print(f"[red]❌ Error: {e}[/red]")
-
-    def view_stats(self):
-        """View system statistics."""
-        console.print("\n[bold]📈 System Statistics[/bold]", style="bold")
-        console.print("━" * 60)
-
-        try:
-            # Get server info
-            info_response = self.session.get(f"{self.base_url}/info", timeout=5)
-            if info_response.status_code == 200:
-                info = info_response.json()
-
-                # LLM provider
-                console.print("\n[bold cyan]LLM Provider:[/bold cyan]")
-                llm_info = info.get('llm', {})
-                console.print(f"  Provider: {llm_info.get('provider', 'unknown')}")
-                console.print(f"  Model: {llm_info.get('model', 'unknown')}")
-
-                # RAG stats
-                console.print("\n[bold cyan]RAG System:[/bold cyan]")
-                rag_info = info.get('rag', {})
-                console.print(f"  Status: {rag_info.get('status', 'unknown')}")
-
-                # Auto-trigger stats
-                trigger_response = self.session.get(f"{self.base_url}/auto-trigger/stats", timeout=5)
-                if trigger_response.status_code == 200:
-                    trigger_stats = trigger_response.json()
-                    if trigger_stats.get('total_queries', 0) > 0:
-                        console.print("\n[bold cyan]Auto-Trigger:[/bold cyan]")
-                        console.print(f"  Total queries: {trigger_stats.get('total_queries', 0)}")
-                        console.print(f"  Avg confidence: {trigger_stats.get('average_confidence', 0):.0%}")
-
-                # Graph stats
-                graph_response = self.session.get(f"{self.base_url}/graph/stats", timeout=5)
-                if graph_response.status_code == 200:
-                    graph_stats = graph_response.json()
-                    console.print("\n[bold cyan]Knowledge Graph:[/bold cyan]")
-                    console.print(f"  Entities: {graph_stats.get('total_entities', 0)}")
-                    console.print(f"  Relationships: {graph_stats.get('total_relationships', 0)}")
-
-        except Exception as e:
-            console.print(f"[red]❌ Error: {e}[/red]")
-
-    def evaluate_rag(self):
-        """Evaluate RAG quality using RAGAS metrics."""
-        console.print("\n[bold magenta]Evaluate RAG Quality[/bold magenta]", style="bold")
-        console.print("━" * 60)
-
-        # Get inputs
-        query = Prompt.ask("💬 [bold]Test query[/bold]")
-        if not query.strip():
-            console.print("[yellow]⚠️  Empty query![/yellow]")
-            return
-
-        # Get contexts
-        console.print("\n[yellow]Enter retrieved contexts (one per line, empty line to finish):[/yellow]")
-        contexts = []
-        try:
-            while True:
-                ctx = input()
-                if not ctx:
-                    break
-                contexts.append(ctx)
-        except EOFError:
-            pass
-
-        if not contexts:
-            console.print("[yellow]⚠️  No contexts provided![/yellow]")
-            return
-
-        # Get generated answer
-        console.print("\n[yellow]Paste the generated answer (Ctrl+D when done):[/yellow]")
-        answer_lines = []
-        try:
-            while True:
-                line = input()
-                answer_lines.append(line)
-        except EOFError:
-            pass
-
-        generated_answer = "\n".join(answer_lines)
-        if not generated_answer.strip():
-            console.print("[yellow]⚠️  No answer provided![/yellow]")
-            return
-
-        # Optional ground truth
-        has_ground_truth = Confirm.ask("Do you have ground truth answer?", default=False)
-        ground_truth = None
-        if has_ground_truth:
-            console.print("\n[yellow]Paste ground truth (Ctrl+D when done):[/yellow]")
-            gt_lines = []
-            try:
-                while True:
-                    line = input()
-                    gt_lines.append(line)
-            except EOFError:
-                pass
-            ground_truth = "\n".join(gt_lines)
-
-        with Progress(
-            SpinnerColumn(),
-            TextColumn("[progress.description]{task.description}"),
-            console=console
-        ) as progress:
-            task = progress.add_task("📊 Evaluating with RAGAS metrics...", total=None)
-
-            try:
-                response = self.session.post(
-                    f"{self.base_url}/evaluate",
-                    json={
-                        "query": query,
-                        "retrieved_contexts": contexts,
-                        "generated_answer": generated_answer,
-                        "ground_truth": ground_truth
-                    },
-                    timeout=60
-                )
-
-                progress.update(task, completed=True)
-
-                if response.status_code == 200:
-                    result = response.json()
-
-                    # Show metrics
-                    console.print("\n[bold green]✓ RAGAS Evaluation Complete![/bold green]")
-
-                    console.print("\n[bold]📊 Metrics:[/bold]")
-                    metrics = result.get('metrics', {})
-
-                    # Always available metrics
-                    if 'context_relevance' in metrics:
-                        score = metrics['context_relevance']
-                        color = "green" if score >= 0.7 else "yellow" if score >= 0.5 else "red"
-                        console.print(f"  Context Relevance: [{color}]{score:.2%}[/{color}]")
-
-                    if 'answer_faithfulness' in metrics:
-                        score = metrics['answer_faithfulness']
-                        color = "green" if score >= 0.7 else "yellow" if score >= 0.5 else "red"
-                        console.print(f"  Answer Faithfulness: [{color}]{score:.2%}[/{color}]")
-
-                    if 'answer_relevance' in metrics:
-                        score = metrics['answer_relevance']
-                        color = "green" if score >= 0.7 else "yellow" if score >= 0.5 else "red"
-                        console.print(f"  Answer Relevance: [{color}]{score:.2%}[/{color}]")
-
-                    # Ground truth metrics (if available)
-                    if ground_truth and 'context_precision' in metrics:
-                        score = metrics['context_precision']
-                        if score > 0:  # Only show if calculated
-                            color = "green" if score >= 0.7 else "yellow" if score >= 0.5 else "red"
-                            console.print(f"  Context Precision: [{color}]{score:.2%}[/{color}]")
-
-                    if ground_truth and 'context_recall' in metrics:
-                        score = metrics['context_recall']
-                        if score > 0:  # Only show if calculated
-                            color = "green" if score >= 0.7 else "yellow" if score >= 0.5 else "red"
-                            console.print(f"  Context Recall: [{color}]{score:.2%}[/{color}]")
-
-                    # Overall score (inside metrics dict)
-                    if 'overall_score' in metrics:
-                        overall = metrics['overall_score']
-                        color = "green" if overall >= 0.7 else "yellow" if overall >= 0.5 else "red"
-                        console.print(f"\n[bold]Overall Score: [{color}]{overall:.2%}[/{color}][/bold]")
-
-                        # Assessment
-                        if overall >= 0.8:
-                            console.print("[bold green]✓ Excellent quality![/bold green]")
-                        elif overall >= 0.6:
-                            console.print("[bold yellow]⚠️  Good, but room for improvement[/bold yellow]")
-                        else:
-                            console.print("[bold red]❌ Needs improvement[/bold red]")
-
-                else:
-                    console.print(f"[red]❌ Error: {response.status_code}[/red]")
-
-            except Exception as e:
-                console.print(f"[red]❌ Error: {e}[/red]")
-
-    def hybrid_search_ui(self):
-        """Perform hybrid search."""
-        console.print("\n[bold cyan]Hybrid Search[/bold cyan]", style="bold")
-        console.print("━" * 60)
-
-        # Get query
-        query = Prompt.ask("🔎 [bold]Search query[/bold]")
-        if not query.strip():
-            console.print("[yellow]⚠️  Empty query![/yellow]")
-            return
-
-        # Get documents to search
-        console.print("\n[yellow]Enter documents to search (one per line, empty line to finish):[/yellow]")
-        console.print("[dim]You can paste code snippets, file contents, or any text[/dim]")
-        documents = []
-        try:
-            while True:
-                doc = input()
-                if not doc:
-                    break
-                documents.append(doc)
-        except EOFError:
-            pass
-
-        if not documents:
-            console.print("[yellow]⚠️  No documents provided![/yellow]")
-            return
-
-        # Optional: tune weights
-        tune_weights = Confirm.ask("Customize search weights?", default=False)
-        semantic_weight = 0.7
-        keyword_weight = 0.3
-
-        if tune_weights:
-            semantic_weight = float(Prompt.ask("Semantic weight (0-1)", default="0.7"))
-            keyword_weight = 1.0 - semantic_weight
-            console.print(f"[dim]Keyword weight: {keyword_weight:.1f}[/dim]")
-
-        # Optional: top k
-        top_k = int(Prompt.ask("Number of results to return", default="5"))
-
-        with Progress(
-            SpinnerColumn(),
-            TextColumn("[progress.description]{task.description}"),
-            console=console
-        ) as progress:
-            task = progress.add_task("🔎 Performing hybrid search...", total=None)
-
-            try:
-                response = self.session.post(
-                    f"{self.base_url}/hybrid-search",
-                    json={
-                        "query": query,
-                        "documents": documents,
-                        "semantic_weight": semantic_weight,
-                        "keyword_weight": keyword_weight,
-                        "top_k": top_k
-                    },
-                    timeout=30
-                )
-
-                progress.update(task, completed=True)
-
-                if response.status_code == 200:
-                    result = response.json()
-
-                    # Show results
-                    console.print("\n[bold green]✓ Search Complete![/bold green]")
-
-                    # Show weights
-                    weights = result.get('weights', {})
-                    console.print(f"\n[dim]Weights: Semantic={weights.get('semantic', 0):.1f}, Keyword={weights.get('keyword', 0):.1f}[/dim]")
-
-                    # Show results
-                    results = result.get('results', [])
-                    if results:
-                        console.print(f"\n[bold]🔎 Top {len(results)} Results:[/bold]\n")
-
-                        for i, res in enumerate(results, 1):
-                            # Get scores (they're inside 'scores' dict)
-                            scores = res.get('scores', {})
-                            combined_score = scores.get('combined', 0)
-                            semantic = scores.get('semantic', 0)
-                            keyword = scores.get('keyword', 0)
-
-                            # Score with color coding
-                            color = "green" if combined_score >= 0.7 else "yellow" if combined_score >= 0.5 else "blue"
-
-                            console.print(f"[bold {color}]{i}. Score: {combined_score:.3f}[/bold {color}]")
-
-                            # Individual scores
-                            console.print(f"   [dim]Semantic: {semantic:.3f} | Keyword: {keyword:.3f}[/dim]")
-
-                            # Document preview
-                            text = res.get('text', '')
-                            preview = text[:200] + "..." if len(text) > 200 else text
-                            console.print(f"   {preview}")
-
-                            # Metadata if available
-                            if res.get('metadata'):
-                                console.print(f"   [dim]Metadata: {res['metadata']}[/dim]")
-
-                            console.print()
-                    else:
-                        console.print("[yellow]No results found[/yellow]")
-
-                else:
-                    console.print(f"[red]❌ Error: {response.status_code}[/red]")
-
-            except Exception as e:
-                console.print(f"[red]❌ Error: {e}[/red]")
+                console.print(f"[red]Error: {e}[/red]")
 
     def show_help(self):
         """Show help information."""
@@ -829,19 +534,68 @@ See README.md and PHASE*.md files for detailed documentation.
 """
         console.print(Panel(Markdown(help_text), border_style="blue"))
 
-    def run(self):
-        """Run the interactive CLI."""
-        # Check server
+    def intelligent_mode(self, user_input: str):
+        """
+        Intelligent mode: analyze user input and route to appropriate function.
+        Bypasses menu and goes directly to RAG/MAF.
+        """
+        user_input_lower = user_input.lower().strip()
+
+        # Directly execute RAG query
+        self.ask_question(query=user_input)
+
+    def run(self, intelligent: bool = False):
+        """
+        Run the interactive CLI.
+
+        Args:
+            intelligent: If True, skip menu and go straight to intelligent mode
+        """
+        # Check server and auto-start if needed
         if not self.check_server():
-            console.print("[bold red]❌ Server is not running![/bold red]")
-            console.print("\nPlease start the server first:")
-            console.print("  [cyan]python src/mcp_server/standalone_server.py[/cyan]")
-            return
+            if self.auto_start_server:
+                if not self.start_server():
+                    console.print("[bold red]Server is not running and could not be started![/bold red]")
+                    console.print("\nPlease start the server manually:")
+                    console.print("  [cyan]python src/mcp_server/standalone_server.py[/cyan]")
+                    return
+            else:
+                console.print("[bold red]Server is not running![/bold red]")
+                console.print("\nPlease start the server first:")
+                console.print("  [cyan]python src/mcp_server/standalone_server.py[/cyan]")
+                return
 
         # Show welcome
         self.show_welcome()
 
-        # Main loop
+        # Intelligent mode: get user input and route directly
+        if intelligent:
+            console.print("\n[bold cyan]Intelligent Mode[/bold cyan]")
+            console.print("[dim]Enter your question and I'll automatically use RAG/MAF as needed.[/dim]\n")
+
+            while True:
+                try:
+                    if self.prompt_session:
+                        user_input = self.get_input_with_history("\n[bold]Your question (or 'exit' to quit)[/bold]")
+                    else:
+                        user_input = Prompt.ask("\n[bold]Your question (or 'exit' to quit)[/bold]")
+
+                    if user_input.lower() in ['exit', 'quit', 'q']:
+                        console.print("\n[bold]Goodbye![/bold]")
+                        break
+
+                    if user_input.strip():
+                        self.intelligent_mode(user_input)
+
+                except KeyboardInterrupt:
+                    console.print("\n\n[bold]Goodbye![/bold]")
+                    break
+                except Exception as e:
+                    console.print(f"[red]Error: {e}[/red]")
+
+            return
+
+        # Regular menu mode
         while True:
             console.print()
             self.show_menu()
@@ -856,28 +610,37 @@ See README.md and PHASE*.md files for detailed documentation.
                 elif choice == "3":
                     self.review_code()
                 elif choice == "4":
-                    self.explore_graph()
+                    console.print("[yellow]Knowledge Graph feature - use server API directly[/yellow]")
                 elif choice == "5":
-                    self.evaluate_rag()
+                    console.print("[yellow]Evaluation feature - use server API directly[/yellow]")
                 elif choice == "6":
-                    self.hybrid_search_ui()
+                    console.print("[yellow]Hybrid Search feature - use server API directly[/yellow]")
                 elif choice == "7":
-                    self.view_stats()
+                    console.print("[yellow]Statistics feature - use server API directly[/yellow]")
                 elif choice == "8":
                     console.print("[yellow]Settings coming soon![/yellow]")
                 elif choice == "9":
                     self.show_help()
                 elif choice == "0":
-                    console.print("\n[bold]👋 Goodbye![/bold]")
+                    console.print("\n[bold]Goodbye![/bold]")
                     break
                 else:
                     console.print("[yellow]Invalid option![/yellow]")
 
             except KeyboardInterrupt:
-                console.print("\n\n[bold]👋 Goodbye![/bold]")
+                console.print("\n\n[bold]Goodbye![/bold]")
                 break
             except Exception as e:
-                console.print(f"[red]❌ Error: {e}[/red]")
+                console.print(f"[red]Error: {e}[/red]")
+
+    def __del__(self):
+        """Cleanup: stop server if we started it."""
+        if self.server_process:
+            try:
+                self.server_process.terminate()
+                self.server_process.wait(timeout=5)
+            except:
+                pass
 
 
 def main():
@@ -890,11 +653,25 @@ def main():
         default="http://localhost:8765",
         help="Server URL (default: http://localhost:8765)"
     )
+    parser.add_argument(
+        "--no-auto-start",
+        action="store_true",
+        help="Don't auto-start server if not running"
+    )
+    parser.add_argument(
+        "--intelligent",
+        "-i",
+        action="store_true",
+        help="Use intelligent mode (skip menu, go directly to RAG)"
+    )
 
     args = parser.parse_args()
 
-    cli = DTCliInteractive(base_url=args.server)
-    cli.run()
+    cli = DTCliInteractive(
+        base_url=args.server,
+        auto_start_server=not args.no_auto_start
+    )
+    cli.run(intelligent=args.intelligent)
 
 
 if __name__ == "__main__":
