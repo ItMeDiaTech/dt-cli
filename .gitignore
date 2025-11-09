@@ -58,6 +58,14 @@ htmlcov/
 
 # ChromaDB
 chroma.sqlite3
+chroma_db/
+
+# Process files
+*.pid
+
+# Backups
+*.backup
+*.backup.*
 
 # Local config
 .env
