@@ -909,26 +909,26 @@ class DTCliInteractive:
                     session_info += f" | {stats['archived_sessions']} archived sessions"
 
         welcome_text = f"""
-# dt-cli Intelligent Interactive CLI 🚀
+# dt-cli Intelligent Interactive CLI
 
 Welcome to the **100% Open Source** RAG/MAF/LLM System with AI-powered memory!
 
 **Project:** `{self.project_folder}`
 **Verbosity:** `{self.verbosity.to_string()}`{session_info}
 
-## ✨ New Intelligent Features
+## New Intelligent Features
 
-🧠 **Hierarchical Session Memory** - Your conversations persist across sessions
+**Hierarchical Session Memory** - Your conversations persist across sessions
 - Remember context from days/weeks ago
 - Automatic compression of older conversations
 - Important discussions never forgotten
 
-🎯 **Context-Aware Queries** - Automatically includes relevant files
+**Context-Aware Queries** - Automatically includes relevant files
 - Smart file discovery from your project
 - Keyword-based relevance matching
 - Up to 20 context files sent per query
 
-💬 **Natural Language Interface** - Just type what you need
+**Natural Language Interface** - Just type what you need
 - No menu navigation required
 - Intent auto-detection (debug, code, review, question)
 - Follow-up questions understand context

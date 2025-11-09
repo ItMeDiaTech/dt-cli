@@ -26,7 +26,7 @@
 - **LLM Provider Switching**: Change LLM providers on-the-fly without restart
 - **Professional Interface**: No emojis, clean terminal-compatible design
 
-### 🧠 Intelligent Context & Memory (2025 Research-Based)
+### Intelligent Context & Memory (2025 Research-Based)
 
 **Hierarchical Session Memory** - Production-grade conversation memory based on latest research:
 
