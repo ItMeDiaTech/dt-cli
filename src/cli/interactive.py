@@ -374,7 +374,7 @@ class DTCliInteractive:
     Interactive terminal interface for dt-cli.
     """
 
-    def __init__(self, base_url: str = "http://localhost:8765", auto_start_server: bool = True):
+    def __init__(self, base_url: str = "http://localhost:58432", auto_start_server: bool = True):
         """
         Initialize interactive CLI.
 
@@ -1655,8 +1655,8 @@ def main():
     )
     parser.add_argument(
         "--server",
-        default="http://localhost:8765",
-        help="Server URL (default: http://localhost:8765)"
+        default="http://localhost:58432",
+        help="Server URL (default: http://localhost:58432)"
     )
     parser.add_argument(
         "--no-auto-start",
