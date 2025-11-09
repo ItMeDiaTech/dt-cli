@@ -41,7 +41,7 @@ class VLLMProvider(BaseLLMProvider):
             api_key: Optional API key (default: 'not-needed')
             temperature: Sampling temperature (default: 0.1)
             max_tokens: Maximum tokens to generate (default: 4096)
-            timeout: Request timeout in seconds (default: 120)
+            timeout: Request timeout in seconds (default: 180)
         """
         super().__init__(config)
 

@@ -392,6 +392,12 @@ class DTCliInteractive:
         self.tracker = SummaryTracker()
         self.conversation_context = ConversationContext()
 
+        # Configurable timeouts for different operation types
+        # Increased from 30s to prevent failures on longer operations
+        self.timeout_short = 10      # Health checks
+        self.timeout_normal = 180    # Standard operations (was 30s)
+        self.timeout_long = 300      # Long-running operations (was 60s)
+
         # Initialize session history manager
         if SESSION_HISTORY_AVAILABLE:
             self.session_history = SessionHistoryManager()
@@ -405,10 +411,32 @@ class DTCliInteractive:
         else:
             self.prompt_session = None
 
+    def log_api_call(self, endpoint: str, method: str = "POST", timeout: int = None, description: str = None):
+        """
+        Log API call details to the terminal for visibility.
+
+        Args:
+            endpoint: API endpoint being called
+            method: HTTP method (GET, POST, etc.)
+            timeout: Timeout value in seconds
+            description: Optional description of what the call does
+        """
+        if self.verbosity >= VerbosityLevel.VERBOSE:
+            # Detailed logging in verbose mode
+            msg_parts = [f"[dim cyan]→ {method} {endpoint}"]
+            if timeout:
+                msg_parts.append(f"(timeout: {timeout}s)")
+            if description:
+                msg_parts.append(f"- {description}")
+            console.print(" ".join(msg_parts) + "[/dim cyan]")
+        elif self.verbosity >= VerbosityLevel.NORMAL and description:
+            # Brief logging in normal mode - just show what's happening
+            console.print(f"[dim cyan]→ {description}[/dim cyan]")
+
     def check_server(self) -> bool:
         """Check if server is running and properly initialized."""
         try:
-            response = self.session.get(f"{self.base_url}/health", timeout=2)
+            response = self.session.get(f"{self.base_url}/health", timeout=self.timeout_short)
             if response.status_code != 200:
                 return False
 
@@ -781,13 +809,14 @@ class DTCliInteractive:
             task = progress.add_task("Generating plan...", total=None)
 
             try:
+                self.log_api_call("/query", "POST", self.timeout_normal, "Creating implementation plan")
                 response = self.session.post(
                     f"{self.base_url}/query",
                     json={
                         "query": f"Create a detailed implementation plan for: {user_input}",
                         "auto_trigger": True
                     },
-                    timeout=30
+                    timeout=self.timeout_normal
                 )
 
                 progress.update(task, completed=True)
@@ -819,90 +848,177 @@ class DTCliInteractive:
                 console.print(f"[red]Error: {e}[/red]")
 
     def handle_debug_request(self, user_input: str):
-        """Handle debug requests."""
+        """Handle debug requests with intelligent context gathering."""
         console.print("\n[bold red]Debug Mode[/bold red]")
         console.print("=" * 60)
 
         self.tracker.add_action("Analyzing error/bug")
 
-        # Check if error output is in the input
-        if len(user_input) > 200:  # Likely contains error output
-            error_output = user_input
-        else:
-            console.print("[yellow]Please paste your error output (press Ctrl+D when done):[/yellow]")
-            lines = []
-            try:
-                while True:
-                    line = input()
-                    lines.append(line)
-            except EOFError:
-                pass
-            error_output = "\n".join(lines) if lines else user_input
+        # Check if input contains actual error patterns
+        error_indicators = [
+            r'Traceback', r'Error:', r'Exception:', r'^\s*File\s+"',
+            r'at\s+\S+\.\S+\(.*:\d+:\d+\)', r'^\s*\^\s*$',  # Python/JS error patterns
+            r'\w+Error:', r'\w+Exception:', r'FAILED', r'AssertionError'
+        ]
+        has_actual_error = any(re.search(pattern, user_input, re.MULTILINE | re.IGNORECASE)
+                              for pattern in error_indicators)
 
-        with Progress(
-            SpinnerColumn(),
-            TextColumn("[progress.description]{task.description}"),
-            console=console
-        ) as progress:
-            task = progress.add_task("Analyzing error...", total=None)
+        # Intelligently gather error context
+        error_output = user_input
+        use_query_endpoint = False  # Flag to use /query instead of /debug
 
-            try:
-                response = self.session.post(
-                    f"{self.base_url}/debug",
-                    json={
-                        "error_output": error_output,
-                        "auto_extract_code": True
-                    },
-                    timeout=30
-                )
+        # If input is short and doesn't contain actual error, try to gather context intelligently
+        if len(user_input) < 200 and not has_actual_error:
+            if self.verbosity >= VerbosityLevel.NORMAL:
+                console.print("[cyan]Analyzing request and gathering context...[/cyan]")
 
-                progress.update(task, completed=True)
+            # Try to find recent error logs in common locations
+            error_sources = []
+            if self.project_folder:
+                # Check for common log files
+                log_patterns = [
+                    "*.log",
+                    "logs/*.log",
+                    "**/.pytest_cache/**/output",
+                    "**/npm-debug.log",
+                    "**/yarn-error.log"
+                ]
 
-                if response.status_code == 200:
-                    result = response.json()
-
-                    # Show error context
-                    console.print("\n[bold]Error Location:[/bold]")
-                    error_ctx = result['error_context']
-                    console.print(f"  Type: {error_ctx['error_type']}")
-                    if error_ctx.get('file_path'):
-                        console.print(f"  File: {error_ctx['file_path']}:{error_ctx.get('line_number', '?')}")
-                    console.print(f"  Message: {error_ctx['error_message']}")
-
-                    # Show root cause
-                    console.print(f"\n[bold red]Root Cause:[/bold red]")
-                    console.print(Panel(result['root_cause'], border_style="red"))
-
-                    # Show fixes
-                    console.print(f"\n[bold green]Suggested Fixes:[/bold green]")
-                    for i, fix in enumerate(result['suggested_fixes'], 1):
-                        console.print(f"  {i}. {fix}")
-
-                    self.tracker.add_action("Error analyzed and fixes suggested")
-
-                elif response.status_code == 404:
-                    console.print("[red]Error: The /debug endpoint was not found.[/red]")
-                    console.print("\n[yellow]This could mean:[/yellow]")
-                    console.print("  1. The server is not running properly")
-                    console.print("  2. The server failed to initialize completely")
-                    console.print(f"\n[cyan]Current server URL: {self.base_url}[/cyan]")
-                    console.print("\n[yellow]Try restarting the server:[/yellow]")
-                    console.print("  [cyan]python3 src/mcp_server/standalone_server.py[/cyan]")
-                else:
-                    console.print(f"[red]Error: {response.status_code}[/red]")
+                for pattern in log_patterns:
                     try:
-                        error_detail = response.json()
-                        if 'detail' in error_detail:
-                            console.print(f"[red]Details: {error_detail['detail']}[/red]")
+                        matches = list(self.project_folder.glob(pattern))
+                        # Get most recently modified
+                        if matches:
+                            latest = max(matches, key=lambda p: p.stat().st_mtime)
+                            if (time.time() - latest.stat().st_mtime) < 3600:  # Modified in last hour
+                                with open(latest, 'r') as f:
+                                    # Read last 100 lines
+                                    lines = f.readlines()
+                                    error_sources.append(f"# Recent log from {latest.name}:\n" + "".join(lines[-100:]))
                     except:
                         pass
 
-            except requests.exceptions.ConnectionError:
-                console.print(f"[red]Connection Error: Could not connect to server at {self.base_url}[/red]")
-                console.print("[yellow]The server may not be running. Try starting it with:[/yellow]")
-                console.print("  [cyan]python3 src/mcp_server/standalone_server.py[/cyan]")
-            except Exception as e:
-                console.print(f"[red]Error: {e}[/red]")
+            # Combine user input with any found error sources
+            if error_sources:
+                error_output = f"User request: {user_input}\n\n" + "\n\n".join(error_sources[:3])  # Limit to 3 sources
+                if self.verbosity >= VerbosityLevel.VERBOSE:
+                    console.print(f"[dim]Found {len(error_sources)} recent log file(s)[/dim]")
+            else:
+                # No logs found and input is just a description - use query endpoint instead
+                # This handles cases like "debug the login error" where there's no actual error output
+                if self.verbosity >= VerbosityLevel.VERBOSE:
+                    console.print("[dim]No recent logs found, using intelligent query mode[/dim]")
+                use_query_endpoint = True
+                error_output = f"Help me debug and fix this issue: {user_input}. Analyze the codebase to identify the problem and suggest fixes."
+
+        # Use appropriate endpoint based on what we have
+        if use_query_endpoint:
+            # Use /query endpoint for description-based debug requests
+            with Progress(
+                SpinnerColumn(),
+                TextColumn("[progress.description]{task.description}"),
+                console=console
+            ) as progress:
+                task = progress.add_task("Analyzing issue...", total=None)
+
+                try:
+                    payload = self._build_enriched_query_payload(error_output, intent='debug')
+                    self.log_api_call("/query", "POST", self.timeout_normal, "Analyzing issue intelligently")
+                    response = self.session.post(
+                        f"{self.base_url}/query",
+                        json=payload,
+                        timeout=self.timeout_normal
+                    )
+
+                    progress.update(task, completed=True)
+
+                    if response.status_code == 200:
+                        result = response.json()
+                        console.print("\n[bold green]Analysis:[/bold green]")
+                        console.print(Panel(Markdown(result['response']), border_style="green"))
+                        self.tracker.add_action("Issue analyzed intelligently")
+                    else:
+                        console.print(f"[red]Error: {response.status_code}[/red]")
+                        try:
+                            error_detail = response.json()
+                            if 'detail' in error_detail:
+                                console.print(f"[red]Details: {error_detail['detail']}[/red]")
+                        except:
+                            pass
+
+                except requests.exceptions.ConnectionError:
+                    console.print(f"[red]Connection Error: Could not connect to server at {self.base_url}[/red]")
+                    console.print("[yellow]The server may not be running. Try starting it with:[/yellow]")
+                    console.print("  [cyan]python3 src/mcp_server/standalone_server.py[/cyan]")
+                except Exception as e:
+                    console.print(f"[red]Error: {e}[/red]")
+        else:
+            # Use /debug endpoint for actual error output
+            with Progress(
+                SpinnerColumn(),
+                TextColumn("[progress.description]{task.description}"),
+                console=console
+            ) as progress:
+                task = progress.add_task("Analyzing error...", total=None)
+
+                try:
+                    self.log_api_call("/debug", "POST", self.timeout_normal, "Analyzing error and suggesting fixes")
+                    response = self.session.post(
+                        f"{self.base_url}/debug",
+                        json={
+                            "error_output": error_output,
+                            "auto_extract_code": True
+                        },
+                        timeout=self.timeout_normal
+                    )
+
+                    progress.update(task, completed=True)
+
+                    if response.status_code == 200:
+                        result = response.json()
+
+                        # Show error context
+                        console.print("\n[bold]Error Location:[/bold]")
+                        error_ctx = result['error_context']
+                        console.print(f"  Type: {error_ctx['error_type']}")
+                        if error_ctx.get('file_path'):
+                            console.print(f"  File: {error_ctx['file_path']}:{error_ctx.get('line_number', '?')}")
+                        console.print(f"  Message: {error_ctx['error_message']}")
+
+                        # Show root cause
+                        console.print(f"\n[bold red]Root Cause:[/bold red]")
+                        console.print(Panel(result['root_cause'], border_style="red"))
+
+                        # Show fixes
+                        console.print(f"\n[bold green]Suggested Fixes:[/bold green]")
+                        for i, fix in enumerate(result['suggested_fixes'], 1):
+                            console.print(f"  {i}. {fix}")
+
+                        self.tracker.add_action("Error analyzed and fixes suggested")
+
+                    elif response.status_code == 404:
+                        console.print("[red]Error: The /debug endpoint was not found.[/red]")
+                        console.print("\n[yellow]This could mean:[/yellow]")
+                        console.print("  1. The server is not running properly")
+                        console.print("  2. The server failed to initialize completely")
+                        console.print(f"\n[cyan]Current server URL: {self.base_url}[/cyan]")
+                        console.print("\n[yellow]Try restarting the server:[/yellow]")
+                        console.print("  [cyan]python3 src/mcp_server/standalone_server.py[/cyan]")
+                    else:
+                        console.print(f"[red]Error: {response.status_code}[/red]")
+                        try:
+                            error_detail = response.json()
+                            if 'detail' in error_detail:
+                                console.print(f"[red]Details: {error_detail['detail']}[/red]")
+                        except:
+                            pass
+
+                except requests.exceptions.ConnectionError:
+                    console.print(f"[red]Connection Error: Could not connect to server at {self.base_url}[/red]")
+                    console.print("[yellow]The server may not be running. Try starting it with:[/yellow]")
+                    console.print("  [cyan]python3 src/mcp_server/standalone_server.py[/cyan]")
+                except Exception as e:
+                    console.print(f"[red]Error: {e}[/red]")
 
     def handle_code_request(self, user_input: str):
         """Handle code implementation requests."""
@@ -923,10 +1039,11 @@ class DTCliInteractive:
                 # Use enriched query payload with context
                 payload = self._build_enriched_query_payload(user_input, intent='code')
 
+                self.log_api_call("/query", "POST", self.timeout_long, "Implementing code changes")
                 response = self.session.post(
                     f"{self.base_url}/query",
                     json=payload,
-                    timeout=30
+                    timeout=self.timeout_long
                 )
 
                 progress.update(task, completed=True)
@@ -1068,10 +1185,11 @@ Welcome to the **100% Open Source** RAG/MAF/LLM System with AI-powered memory!
                 # Use enriched query payload with context
                 payload = self._build_enriched_query_payload(query, intent='question')
 
+                self.log_api_call("/query", "POST", self.timeout_normal, "Querying codebase for answer")
                 response = self.session.post(
                     f"{self.base_url}/query",
                     json=payload,
-                    timeout=30
+                    timeout=self.timeout_normal
                 )
 
                 progress.update(task, completed=True)
@@ -1134,13 +1252,14 @@ Welcome to the **100% Open Source** RAG/MAF/LLM System with AI-powered memory!
             task = progress.add_task("Analyzing error...", total=None)
 
             try:
+                self.log_api_call("/debug", "POST", self.timeout_normal, "Analyzing error from pasted output")
                 response = self.session.post(
                     f"{self.base_url}/debug",
                     json={
                         "error_output": error_output,
                         "auto_extract_code": True
                     },
-                    timeout=30
+                    timeout=self.timeout_normal
                 )
 
                 progress.update(task, completed=True)
@@ -1198,12 +1317,12 @@ Welcome to the **100% Open Source** RAG/MAF/LLM System with AI-powered memory!
 
                 # Use enriched query payload with full project context
                 payload = self._build_enriched_query_payload(query, intent='review')
-                payload['timeout'] = 60  # Longer timeout for codebase review
 
+                self.log_api_call("/query", "POST", self.timeout_long, "Reviewing entire codebase")
                 response = self.session.post(
                     f"{self.base_url}/query",
                     json=payload,
-                    timeout=60
+                    timeout=self.timeout_long
                 )
 
                 progress.update(task, completed=True)
@@ -1323,6 +1442,7 @@ Welcome to the **100% Open Source** RAG/MAF/LLM System with AI-powered memory!
             task = progress.add_task("Reviewing code...", total=None)
 
             try:
+                self.log_api_call("/review", "POST", self.timeout_normal, "Reviewing code for quality issues")
                 response = self.session.post(
                     f"{self.base_url}/review",
                     json={
@@ -1330,7 +1450,7 @@ Welcome to the **100% Open Source** RAG/MAF/LLM System with AI-powered memory!
                         "file_path": file_path,
                         "language": "python"
                     },
-                    timeout=30
+                    timeout=self.timeout_normal
                 )
 
                 progress.update(task, completed=True)

@@ -27,7 +27,8 @@ class BaseLLMProvider(ABC):
         self.model_name = config.get('model_name', 'default')
         self.temperature = config.get('temperature', 0.1)
         self.max_tokens = config.get('max_tokens', 4096)
-        self.timeout = config.get('timeout', 60)
+        # Increased default timeout from 60s to 180s to prevent failures on longer operations
+        self.timeout = config.get('timeout', 180)
 
         logger.info(f"Initialized {self.__class__.__name__} with model {self.model_name}")
 
