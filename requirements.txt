@@ -18,12 +18,22 @@ pydantic-settings>=2.1.0
 networkx>=3.2.1
 psutil>=5.9.8
 
+# Code Analysis (AST parsing for better chunking)
+tree-sitter>=0.20.4
+tree-sitter-python>=0.20.4
+tree-sitter-javascript>=0.20.3
+tree-sitter-typescript>=0.20.5
+
 # Utilities
 aiofiles>=23.2.1
 python-dotenv>=1.0.0
 pyyaml>=6.0.1
 tiktoken>=0.5.2
 watchdog>=3.0.0
+rich>=13.0.0
+
+# LLM Providers (optional - install what you need)
+# anthropic>=0.18.0  # Only needed if using Claude provider
 
 # Development
 pytest>=7.4.4
