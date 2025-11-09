@@ -655,7 +655,7 @@ class DTCliInteractive:
 
     def handle_review_request(self, user_input: str):
         """Handle code review requests."""
-        self.review_code()
+        self.review_code(user_input=user_input)
 
     def handle_question_request(self, user_input: str):
         """Handle question/query requests."""
@@ -848,7 +848,47 @@ Simply describe what you want in natural language!
             except Exception as e:
                 console.print(f"[red]Error: {e}[/red]")
 
-    def review_code(self):
+    def handle_codebase_review(self, user_input: str):
+        """Handle review of entire codebase using RAG."""
+        with Progress(
+            SpinnerColumn(),
+            TextColumn("[progress.description]{task.description}"),
+            console=console
+        ) as progress:
+            task = progress.add_task("Analyzing codebase...", total=None)
+
+            try:
+                # Use RAG query to analyze the entire codebase
+                query = f"Review the entire codebase and find any errors, issues, security vulnerabilities, or code quality problems. {user_input}"
+
+                response = self.session.post(
+                    f"{self.base_url}/query",
+                    json={
+                        "query": query,
+                        "auto_trigger": True
+                    },
+                    timeout=60  # Longer timeout for codebase review
+                )
+
+                progress.update(task, completed=True)
+
+                if response.status_code == 200:
+                    result = response.json()
+
+                    console.print("\n[bold magenta]Codebase Review Results:[/bold magenta]")
+                    console.print(Panel(Markdown(result['response']), border_style="magenta"))
+
+                    self.tracker.add_action("Codebase review completed")
+
+                else:
+                    console.print(f"[red]Error: {response.status_code}[/red]")
+
+            except requests.exceptions.Timeout:
+                console.print("[red]Request timed out. Codebase review may take longer for large projects.[/red]")
+            except Exception as e:
+                console.print(f"[red]Error: {e}[/red]")
+
+    def review_code(self, user_input: Optional[str] = None):
         """Handle code review."""
         if self.verbosity >= VerbosityLevel.NORMAL:
             console.print("\n[bold magenta]Review Code[/bold magenta]", style="bold")
@@ -856,8 +896,40 @@ Simply describe what you want in natural language!
 
         self.tracker.add_action("Reviewing code")
 
-        # Get code input
-        file_path = Prompt.ask("[bold]File path to review[/bold] (or press Enter to paste code)")
+        # Determine what to review based on user input
+        file_path = None
+        if user_input:
+            # Check if user wants to review entire codebase
+            codebase_keywords = [r'\bcodebase\b', r'\bentire (project|code)\b', r'\ball (files|code)\b', r'\bproject\b']
+            is_codebase_review = any(re.search(pattern, user_input.lower()) for pattern in codebase_keywords)
+
+            if is_codebase_review and self.project_folder:
+                # Use RAG query to review the entire codebase
+                console.print(f"[cyan]Reviewing entire codebase in: {self.project_folder}[/cyan]")
+                self.handle_codebase_review(user_input)
+                return
+
+            # Try to extract file path from user input
+            # Look for patterns like "review auth.py", "check src/api.py for errors"
+            file_patterns = [
+                r'(?:review|check|analyze|inspect)\s+([^\s]+\.py)',
+                r'(?:in|file)\s+([^\s]+\.py)',
+                r'([^\s]+\.py)'
+            ]
+            for pattern in file_patterns:
+                match = re.search(pattern, user_input, re.IGNORECASE)
+                if match:
+                    file_path = match.group(1)
+                    # If it's a relative path, make it relative to project_folder
+                    if not os.path.isabs(file_path) and self.project_folder:
+                        potential_path = self.project_folder / file_path
+                        if potential_path.exists():
+                            file_path = str(potential_path)
+                    break
+
+        # Get code input if not determined from user input
+        if not file_path:
+            file_path = Prompt.ask("[bold]File path to review[/bold] (or press Enter to paste code)")
 
         if file_path.strip():
             # Read from file
