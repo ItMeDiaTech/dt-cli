@@ -145,18 +145,32 @@ class CodeReviewAgent:
         Returns:
             ReviewResult with issues and metrics
         """
+        logger.info(f"Starting code review for {file_path or 'unnamed file'}")
         issues = []
 
         # Run rule-based checks
+        logger.debug("Running security checks...")
         issues.extend(self.security_checker.check(code))
+
+        logger.debug("Running performance checks...")
         issues.extend(self.performance_checker.check(code))
+
+        logger.debug("Running best practices checks...")
         issues.extend(self.best_practices_checker.check(code))
+
+        logger.debug("Running complexity checks...")
         issues.extend(self.complexity_checker.check(code))
+
+        logger.info(f"Rule-based checks found {len(issues)} issues")
 
         # LLM-based advanced analysis (if available)
         if self.llm:
+            logger.info("Running LLM-based advanced analysis...")
             llm_issues = self._llm_review(code, file_path)
+            logger.info(f"LLM analysis found {len(llm_issues)} additional issues")
             issues.extend(llm_issues)
+        else:
+            logger.info("LLM provider not available, skipping advanced analysis")
 
         # Calculate metrics
         metrics = self._calculate_metrics(code, issues)

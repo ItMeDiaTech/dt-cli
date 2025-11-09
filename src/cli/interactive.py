@@ -1461,6 +1461,10 @@ Welcome to the **100% Open Source** RAG/MAF/LLM System with AI-powered memory!
                 if response.status_code == 200:
                     result = response.json()
 
+                    # Show warning if LLM is not available
+                    if result.get('warning'):
+                        console.print(f"\n[yellow]⚠️  {result['warning']}[/yellow]")
+
                     # Show score
                     score = result['overall_score']
                     score_color = "green" if score >= 7 else "yellow" if score >= 5 else "red"
