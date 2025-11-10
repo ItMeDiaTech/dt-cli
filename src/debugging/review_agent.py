@@ -132,7 +132,8 @@ class CodeReviewAgent:
         self,
         code: str,
         file_path: Optional[str] = None,
-        language: str = "python"
+        language: str = "python",
+        progress_callback: Optional[callable] = None
     ) -> ReviewResult:
         """
         Perform comprehensive code review.
@@ -141,6 +142,7 @@ class CodeReviewAgent:
             code: Code to review
             file_path: Optional file path
             language: Programming language
+            progress_callback: Optional callback for progress updates (receives status message)
 
         Returns:
             ReviewResult with issues and metrics
@@ -148,31 +150,42 @@ class CodeReviewAgent:
         logger.info(f"Starting code review for {file_path or 'unnamed file'}")
         issues = []
 
+        def update_progress(message: str):
+            """Update progress if callback is provided."""
+            if progress_callback:
+                progress_callback(message)
+            logger.debug(message)
+
         # Run rule-based checks
-        logger.debug("Running security checks...")
+        update_progress("Running security checks...")
         issues.extend(self.security_checker.check(code))
 
-        logger.debug("Running performance checks...")
+        update_progress("Running performance checks...")
         issues.extend(self.performance_checker.check(code))
 
-        logger.debug("Running best practices checks...")
+        update_progress("Running best practices checks...")
         issues.extend(self.best_practices_checker.check(code))
 
-        logger.debug("Running complexity checks...")
+        update_progress("Running complexity checks...")
         issues.extend(self.complexity_checker.check(code))
 
+        update_progress(f"Rule-based checks found {len(issues)} issues")
         logger.info(f"Rule-based checks found {len(issues)} issues")
 
         # LLM-based advanced analysis (if available)
         if self.llm:
+            update_progress("Running LLM-based advanced analysis...")
             logger.info("Running LLM-based advanced analysis...")
-            llm_issues = self._llm_review(code, file_path)
+            llm_issues = self._llm_review(code, file_path, progress_callback)
             logger.info(f"LLM analysis found {len(llm_issues)} additional issues")
+            update_progress(f"LLM analysis found {len(llm_issues)} additional issues")
             issues.extend(llm_issues)
         else:
             logger.info("LLM provider not available, skipping advanced analysis")
+            update_progress("LLM provider not available, skipping advanced analysis")
 
         # Calculate metrics
+        update_progress("Calculating metrics and generating summary...")
         metrics = self._calculate_metrics(code, issues)
 
         # Calculate overall score
@@ -181,6 +194,8 @@ class CodeReviewAgent:
         # Generate summary
         summary = self._generate_summary(issues, overall_score)
 
+        update_progress("Review complete!")
+
         return ReviewResult(
             issues=issues,
             summary=summary,
@@ -188,20 +203,28 @@ class CodeReviewAgent:
             metrics=metrics
         )
 
-    def _llm_review(self, code: str, file_path: Optional[str]) -> List[CodeIssue]:
+    def _llm_review(self, code: str, file_path: Optional[str], progress_callback: Optional[callable] = None) -> List[CodeIssue]:
         """Use LLM for advanced code review."""
         prompt = self._build_review_prompt(code, file_path)
 
         try:
+            if progress_callback:
+                progress_callback("Sending code to LLM for analysis...")
+
             response = self.llm.generate(
                 prompt=prompt,
                 system_prompt="You are an expert code reviewer specializing in Python best practices and security."
             )
 
+            if progress_callback:
+                progress_callback("Parsing LLM analysis results...")
+
             return self._parse_llm_issues(response)
 
         except Exception as e:
             logger.error(f"LLM review failed: {e}")
+            if progress_callback:
+                progress_callback(f"LLM review error: {str(e)}")
             return []
 
     def _build_review_prompt(self, code: str, file_path: Optional[str]) -> str:

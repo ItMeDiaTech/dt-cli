@@ -14,6 +14,10 @@ import logging
 import sys
 import os
 import socket
+import asyncio
+import threading
+from queue import Queue
+import json
 
 # Add parent directory to path
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
@@ -111,6 +115,7 @@ class ReviewRequest(BaseModel):
     code: str
     file_path: Optional[str] = None
     language: str = "python"
+    stream: bool = False
 
 
 class GraphBuildRequest(BaseModel):
@@ -723,8 +728,22 @@ class StandaloneMCPServer:
             - Best practices violations
             - Code complexity
             - Documentation completeness
+
+            Supports streaming for long-running reviews with progress updates.
             """
             try:
+                # If streaming is requested, use streaming response
+                if request.stream:
+                    return StreamingResponse(
+                        self._stream_review(
+                            request.code,
+                            file_path=request.file_path,
+                            language=request.language
+                        ),
+                        media_type="text/event-stream"
+                    )
+
+                # Otherwise, use synchronous review (original behavior)
                 review = self.review_agent.review_code(
                     request.code,
                     file_path=request.file_path,
@@ -1084,6 +1103,91 @@ class StandaloneMCPServer:
         except Exception as e:
             logger.error(f"Streaming error: {e}")
             yield f"data: [ERROR] {str(e)}\n\n"
+
+    async def _stream_review(
+        self,
+        code: str,
+        file_path: Optional[str] = None,
+        language: str = "python"
+    ):
+        """
+        Stream review progress generator.
+
+        Args:
+            code: Code to review
+            file_path: Optional file path
+            language: Programming language
+
+        Yields:
+            Server-sent events with progress updates and final result
+        """
+        progress_queue = Queue()
+        result_holder = {"result": None, "error": None}
+
+        def progress_callback(message: str):
+            """Callback to send progress updates."""
+            progress_queue.put(message)
+
+        def run_review():
+            """Run review in a separate thread."""
+            try:
+                review = self.review_agent.review_code(
+                    code,
+                    file_path=file_path,
+                    language=language,
+                    progress_callback=progress_callback
+                )
+                result_holder["result"] = review
+                progress_queue.put(None)  # Signal completion
+            except Exception as e:
+                logger.error(f"Review error in thread: {e}")
+                result_holder["error"] = e
+                progress_queue.put(None)  # Signal completion
+
+        # Start review in background thread
+        review_thread = threading.Thread(target=run_review)
+        review_thread.start()
+
+        try:
+            # Stream progress updates
+            while True:
+                # Check for messages with a short timeout
+                try:
+                    message = progress_queue.get(timeout=0.1)
+                    if message is None:
+                        # Review completed
+                        break
+                    # Send progress update
+                    progress_data = json.dumps({"type": "progress", "message": message})
+                    yield f"data: {progress_data}\n\n"
+                except:
+                    # No message yet, yield a keepalive
+                    await asyncio.sleep(0.1)
+                    continue
+
+            # Wait for thread to complete
+            review_thread.join(timeout=1.0)
+
+            # Send final result or error
+            if result_holder["error"]:
+                error_data = json.dumps({
+                    "type": "error",
+                    "error": str(result_holder["error"])
+                })
+                yield f"data: {error_data}\n\n"
+            elif result_holder["result"]:
+                result_data = json.dumps({
+                    "type": "result",
+                    "data": result_holder["result"].to_dict()
+                })
+                yield f"data: {result_data}\n\n"
+
+            yield "data: [DONE]\n\n"
+
+        except Exception as e:
+            logger.error(f"Streaming review error: {e}")
+            error_data = json.dumps({"type": "error", "error": str(e)})
+            yield f"data: {error_data}\n\n"
 
     def run(self):
         """Run the standalone server."""
