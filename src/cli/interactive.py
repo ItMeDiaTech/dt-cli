@@ -1172,13 +1172,37 @@ Welcome to the **100% Open Source** RAG/MAF/LLM System with AI-powered memory!
 
         self.tracker.add_action("Querying codebase")
 
-        if not query:
-            if self.prompt_session:
-                query = self.get_input_with_history("[bold]Your question[/bold]")
-            else:
-                query = Prompt.ask("[bold]Your question[/bold]")
+        # Enhance query with context if it's too vague
+        if query and len(query.strip()) > 0:
+            # Check if query is vague and might benefit from context
+            vague_patterns = [
+                r'^(what|how|why|where|when)\s+(is|are|does|do|can|should)\s+(this|that|it)\b',
+                r'^(explain|describe|show|tell)\s+(this|that|it)\b',
+                r'\b(this|that|it)\b(?!\s+\w+)',  # References to "this/that/it" without context
+            ]
+            is_vague = any(re.search(pattern, query.lower()) for pattern in vague_patterns)
 
-        if not query.strip():
+            if is_vague and self.conversation_context.files_in_context:
+                # Enhance with context from recent files
+                context_files = self.conversation_context.files_in_context[:3]
+                enhanced_query = f"{query}\n\nContext: Recently discussed files: {', '.join(os.path.basename(f) for f in context_files)}"
+                if self.verbosity >= VerbosityLevel.VERBOSE:
+                    console.print(f"[dim]Enhanced query with context from recent files[/dim]")
+                query = enhanced_query
+
+        if not query:
+            # Suggest based on recent context
+            suggestion = ""
+            if self.conversation_context.files_in_context:
+                recent_file = os.path.basename(self.conversation_context.files_in_context[0])
+                suggestion = f" (e.g., 'How does {recent_file} work?')"
+
+            if self.prompt_session:
+                query = self.get_input_with_history(f"[bold]Your question[/bold]{suggestion}")
+            else:
+                query = Prompt.ask(f"[bold]Your question[/bold]{suggestion}")
+
+        if not query or not query.strip():
             console.print("[yellow]Empty query![/yellow]")
             return
 
@@ -1231,24 +1255,103 @@ Welcome to the **100% Open Source** RAG/MAF/LLM System with AI-powered memory!
             except Exception as e:
                 console.print(f"[red]Error: {e}[/red]")
 
-    def debug_error(self):
+    def _intelligently_detect_error(self, user_input: Optional[str] = None) -> Optional[str]:
+        """
+        Intelligently detect error output from context.
+
+        Uses multiple strategies:
+        1. Parse user input for error patterns
+        2. Check recent git logs for errors
+        3. Look for recent test failures
+        4. Check conversation history for errors
+
+        Args:
+            user_input: User's natural language input
+
+        Returns:
+            Detected error output or None
+        """
+        error_output = None
+
+        # Strategy 1: Extract error from user input
+        if user_input:
+            # Look for common error patterns
+            error_patterns = [
+                r'(Traceback[\s\S]+?Error:.+?)(?:\n\n|$)',  # Python traceback
+                r'(Exception in thread[\s\S]+?at .+?)(?:\n\n|$)',  # Java exception
+                r'(Error:[\s\S]+?)(?:\n\n|$)',  # Generic error
+                r'(FAILED[\s\S]+?)(?:\n\n|$)',  # Test failure
+            ]
+            for pattern in error_patterns:
+                match = re.search(pattern, user_input, re.MULTILINE)
+                if match:
+                    error_output = match.group(1)
+                    break
+
+        # Strategy 2: Check recent test output files
+        if not error_output and self.project_folder:
+            test_output_patterns = [
+                'test_output.txt',
+                'pytest.log',
+                '.pytest_cache/*/lastfailed',
+                'test-results/**/*.xml',
+            ]
+            for pattern in test_output_patterns:
+                try:
+                    files = list(self.project_folder.glob(pattern))
+                    if files:
+                        # Get most recent
+                        most_recent = max(files, key=lambda f: f.stat().st_mtime)
+                        with open(most_recent, 'r') as f:
+                            content = f.read()
+                            # Look for errors in the file
+                            if 'Error' in content or 'FAILED' in content:
+                                error_output = content[-2000:]  # Last 2000 chars
+                                break
+                except Exception as e:
+                    logger.debug(f"Could not read test output: {e}")
+
+        # Strategy 3: Check conversation history for errors
+        if not error_output and self.conversation_context.conversation_history:
+            for turn in reversed(self.conversation_context.conversation_history):
+                user_msg = turn.get('user_input', '')
+                if any(keyword in user_msg.lower() for keyword in ['error', 'exception', 'failed', 'traceback']):
+                    # User mentioned an error - might be in their input
+                    for pattern in [r'(Traceback[\s\S]+?Error:.+?)(?:\n\n|$)', r'(Error:[\s\S]+?)(?:\n\n|$)']:
+                        match = re.search(pattern, user_msg, re.MULTILINE)
+                        if match:
+                            error_output = match.group(1)
+                            break
+                if error_output:
+                    break
+
+        return error_output
+
+    def debug_error(self, user_input: Optional[str] = None):
         """Handle error debugging."""
         console.print("\n[bold red]Debug an Error[/bold red]", style="bold")
         console.print("=" * 60)
 
-        console.print("[yellow]Paste your error output (press Ctrl+D or Ctrl+Z when done):[/yellow]")
+        # Try to intelligently detect the error
+        error_output = self._intelligently_detect_error(user_input)
 
-        lines = []
-        try:
-            while True:
-                line = input()
-                lines.append(line)
-        except EOFError:
-            pass
+        if error_output:
+            console.print(f"[cyan]Intelligently detected error from context[/cyan]")
+            if self.verbosity >= VerbosityLevel.VERBOSE:
+                console.print(f"[dim]{error_output[:200]}...[/dim]")
+        else:
+            # Prompt for error if we couldn't detect it
+            console.print("[yellow]Paste your error output (press Ctrl+D or Ctrl+Z when done):[/yellow]")
+            lines = []
+            try:
+                while True:
+                    line = input()
+                    lines.append(line)
+            except EOFError:
+                pass
+            error_output = "\n".join(lines)
 
-        error_output = "\n".join(lines)
-
-        if not error_output.strip():
+        if not error_output or not error_output.strip():
             console.print("[yellow]No error provided![/yellow]")
             return
 
@@ -1375,6 +1478,92 @@ Welcome to the **100% Open Source** RAG/MAF/LLM System with AI-powered memory!
             except Exception as e:
                 console.print(f"[red]Error: {e}[/red]")
 
+    def _intelligently_detect_files_to_review(self, user_input: Optional[str] = None) -> List[str]:
+        """
+        Intelligently detect which files should be reviewed based on context.
+
+        Uses multiple strategies:
+        1. Parse user input for explicit file mentions
+        2. Check git status for modified/staged files
+        3. Use conversation context for recently discussed files
+        4. Check project folder for recently modified files
+
+        Args:
+            user_input: User's natural language input
+
+        Returns:
+            List of file paths to review
+        """
+        candidate_files = []
+
+        # Strategy 1: Parse user input for explicit file mentions
+        if user_input:
+            # Look for file patterns in user input
+            file_patterns = [
+                r'([^\s]+\.py)',
+                r'([^\s]+\.js)',
+                r'([^\s]+\.ts)',
+                r'([^\s]+\.java)',
+                r'([^\s]+\.go)',
+                r'([^\s]+\.rs)',
+                r'([^\s]+\.cpp)',
+                r'([^\s]+\.c)',
+                r'([^\s]+\.h)',
+            ]
+            for pattern in file_patterns:
+                matches = re.findall(pattern, user_input, re.IGNORECASE)
+                for match in matches:
+                    # Check if file exists
+                    if os.path.isabs(match) and os.path.exists(match):
+                        candidate_files.append(match)
+                    elif self.project_folder:
+                        potential_path = self.project_folder / match
+                        if potential_path.exists():
+                            candidate_files.append(str(potential_path))
+
+        # Strategy 2: Check git status for modified/staged files
+        if self.project_folder and not candidate_files:
+            try:
+                # Get modified and staged files
+                result = subprocess.run(
+                    ['git', 'status', '--porcelain'],
+                    cwd=self.project_folder,
+                    capture_output=True,
+                    text=True,
+                    timeout=5
+                )
+                if result.returncode == 0:
+                    for line in result.stdout.strip().split('\n'):
+                        if line.strip():
+                            # Parse git status format: "XY filename"
+                            status_code = line[:2]
+                            filename = line[3:].strip()
+                            # Only include modified/added files, not deleted
+                            if status_code.strip() and status_code[0] not in ['D', '?']:
+                                file_path = self.project_folder / filename
+                                if file_path.exists() and file_path.suffix in ['.py', '.js', '.ts', '.java', '.go', '.rs', '.cpp', '.c', '.h']:
+                                    candidate_files.append(str(file_path))
+            except Exception as e:
+                logger.debug(f"Could not get git status: {e}")
+
+        # Strategy 3: Use conversation context for recently discussed files
+        if not candidate_files and self.conversation_context.files_in_context:
+            candidate_files.extend(self.conversation_context.files_in_context[:5])
+
+        # Strategy 4: Check for recently modified files in project folder
+        if not candidate_files and self.project_folder:
+            try:
+                # Find recently modified Python files (as an example)
+                py_files = list(self.project_folder.rglob('*.py'))
+                # Sort by modification time
+                py_files.sort(key=lambda f: f.stat().st_mtime, reverse=True)
+                # Take top 3 most recently modified
+                candidate_files.extend([str(f) for f in py_files[:3]])
+            except Exception as e:
+                logger.debug(f"Could not find recently modified files: {e}")
+
+        return candidate_files
+
     def review_code(self, user_input: Optional[str] = None):
         """Handle code review."""
         if self.verbosity >= VerbosityLevel.NORMAL:
@@ -1385,6 +1574,8 @@ Welcome to the **100% Open Source** RAG/MAF/LLM System with AI-powered memory!
 
         # Determine what to review based on user input
         file_path = None
+        code = None
+
         if user_input:
             # Check if user wants to review entire codebase
             codebase_keywords = [r'\bcodebase\b', r'\bentire (project|code)\b', r'\ball (files|code)\b', r'\bproject\b']
@@ -1396,29 +1587,36 @@ Welcome to the **100% Open Source** RAG/MAF/LLM System with AI-powered memory!
                 self.handle_codebase_review(user_input)
                 return
 
-            # Try to extract file path from user input
-            # Look for patterns like "review auth.py", "check src/api.py for errors"
-            file_patterns = [
-                r'(?:review|check|analyze|inspect)\s+([^\s]+\.py)',
-                r'(?:in|file)\s+([^\s]+\.py)',
-                r'([^\s]+\.py)'
-            ]
-            for pattern in file_patterns:
-                match = re.search(pattern, user_input, re.IGNORECASE)
-                if match:
-                    file_path = match.group(1)
-                    # If it's a relative path, make it relative to project_folder
-                    if not os.path.isabs(file_path) and self.project_folder:
-                        potential_path = self.project_folder / file_path
-                        if potential_path.exists():
-                            file_path = str(potential_path)
-                    break
+        # Intelligently detect what files to review
+        candidate_files = self._intelligently_detect_files_to_review(user_input)
 
-        # Get code input if not determined from user input
+        if candidate_files:
+            # If we found candidate files, use them
+            if len(candidate_files) == 1:
+                file_path = candidate_files[0]
+                console.print(f"[cyan]Intelligently detected file to review: {file_path}[/cyan]")
+            else:
+                # Multiple candidates - let user choose or review all
+                console.print(f"[cyan]Found {len(candidate_files)} files to review:[/cyan]")
+                for idx, f in enumerate(candidate_files[:5], 1):
+                    # Show relative path if in project folder
+                    display_path = f
+                    if self.project_folder and f.startswith(str(self.project_folder)):
+                        display_path = os.path.relpath(f, self.project_folder)
+                    console.print(f"  {idx}. {display_path}")
+
+                if len(candidate_files) > 5:
+                    console.print(f"  ... and {len(candidate_files) - 5} more")
+
+                # Use the first one by default
+                file_path = candidate_files[0]
+                console.print(f"[cyan]Reviewing: {os.path.basename(file_path)}[/cyan]")
+
+        # If we still don't have a file, prompt the user
         if not file_path:
             file_path = Prompt.ask("[bold]File path to review[/bold] (or press Enter to paste code)")
 
-        if file_path.strip():
+        if file_path and file_path.strip():
             # Read from file
             try:
                 with open(file_path, 'r') as f:
@@ -1439,7 +1637,7 @@ Welcome to the **100% Open Source** RAG/MAF/LLM System with AI-powered memory!
             code = "\n".join(lines)
             file_path = "pasted_code.py"
 
-        if not code.strip():
+        if not code or not code.strip():
             console.print("[yellow]No code provided![/yellow]")
             return
 
