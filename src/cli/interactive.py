@@ -1423,11 +1423,86 @@ Welcome to the **100% Open Source** RAG/MAF/LLM System with AI-powered memory!
             task = progress.add_task("Analyzing codebase...", total=None)
 
             try:
-                # Use RAG query to analyze the entire codebase
-                query = f"Review the entire codebase and find any errors, issues, security vulnerabilities, or code quality problems. {user_input}"
+                # Gather actual files from the project directory
+                if not self.project_folder:
+                    console.print("[red]No project folder set![/red]")
+                    return
 
-                # Use enriched query payload with full project context
-                payload = self._build_enriched_query_payload(query, intent='review')
+                # Collect Python files from the project (limit to reasonable size)
+                code_files = []
+                max_files = 50  # Limit to prevent overwhelming the LLM
+                max_file_size = 10000  # Max chars per file
+
+                if self.verbosity >= VerbosityLevel.VERBOSE:
+                    console.print(f"[dim]Scanning project folder: {self.project_folder}[/dim]")
+
+                for ext in ['*.py', '*.js', '*.ts', '*.jsx', '*.tsx']:
+                    pattern = str(self.project_folder / '**' / ext)
+                    files = glob_module.glob(pattern, recursive=True)
+
+                    for file_path in files:
+                        # Skip common exclusions
+                        rel_path = os.path.relpath(file_path, self.project_folder)
+                        if any(skip in rel_path for skip in ['.git/', 'node_modules/', '__pycache__/', '.venv/', 'venv/', 'dist/', 'build/', 'test_', 'tests/']):
+                            continue
+
+                        try:
+                            with open(file_path, 'r', encoding='utf-8') as f:
+                                content = f.read()
+                                if len(content) > max_file_size:
+                                    # Truncate large files
+                                    content = content[:max_file_size] + "\n... (truncated)"
+
+                                code_files.append({
+                                    'path': rel_path,
+                                    'content': content
+                                })
+
+                                if len(code_files) >= max_files:
+                                    break
+                        except Exception as e:
+                            logger.debug(f"Could not read {file_path}: {e}")
+                            continue
+
+                    if len(code_files) >= max_files:
+                        break
+
+                if not code_files:
+                    console.print("[yellow]No code files found in project folder![/yellow]")
+                    return
+
+                if self.verbosity >= VerbosityLevel.VERBOSE:
+                    console.print(f"[dim]Found {len(code_files)} files to analyze[/dim]")
+
+                # Build a comprehensive prompt with actual file contents
+                files_content = "\n\n".join([
+                    f"File: {f['path']}\n```\n{f['content']}\n```"
+                    for f in code_files
+                ])
+
+                query = f"""You are analyzing a codebase located in the project folder: {self.project_folder.name}
+
+Please review the following code files and identify:
+1. Errors (syntax errors, logic errors, bugs)
+2. Security vulnerabilities
+3. Code quality issues
+4. Best practice violations
+5. Potential performance problems
+
+User request: {user_input}
+
+Here are the code files:
+
+{files_content}
+
+Provide a comprehensive analysis with specific file names and line references where possible."""
+
+                # Send to LLM with actual code content
+                payload = {
+                    "query": query,
+                    "auto_trigger": False,  # Don't auto-trigger RAG since we have all the content
+                    "use_rag": False  # We already have the code, no need for RAG
+                }
 
                 self.log_api_call("/query", "POST", self.timeout_long, "Reviewing entire codebase")
                 response = self.session.post(
