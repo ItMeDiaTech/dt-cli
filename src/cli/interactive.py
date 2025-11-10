@@ -384,7 +384,13 @@ class DTCliInteractive:
             base_url: Base URL for the dt-cli server
             auto_start_server: Whether to auto-start server if not running
         """
-        self.base_url = base_url
+        # Check for environment variable override
+        env_server_url = os.getenv('DT_CLI_SERVER_URL')
+        if env_server_url:
+            self.base_url = env_server_url
+            logger.info(f"Using server URL from DT_CLI_SERVER_URL: {self.base_url}")
+        else:
+            self.base_url = base_url
         self.session = requests.Session()
         self.session.headers.update({"Content-Type": "application/json"})
         self.auto_start_server = auto_start_server
@@ -1799,13 +1805,16 @@ def main():
     """Main entry point."""
     import argparse
 
+    # Get default server URL from environment or use localhost
+    default_server = os.getenv('DT_CLI_SERVER_URL', 'http://localhost:58432')
+
     parser = argparse.ArgumentParser(
         description="dt-cli Interactive Terminal - Intelligent AI Assistant for Codebases"
     )
     parser.add_argument(
         "--server",
-        default="http://localhost:58432",
-        help="Server URL (default: http://localhost:58432)"
+        default=default_server,
+        help=f"Server URL (default: {default_server}, can be set via DT_CLI_SERVER_URL env var)"
     )
     parser.add_argument(
         "--no-auto-start",

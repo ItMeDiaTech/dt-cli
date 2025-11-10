@@ -209,50 +209,11 @@ class StandaloneMCPServer:
             self.llm = None
             self.llm_available = False
 
-        # Initialize RAG system
-        logger.info("Initializing RAG system...")
-        self.rag_engine = QueryEngine()
-
-        # Initialize MAF system
-        logger.info("Initializing MAF system...")
-        self.orchestrator = AgentOrchestrator(rag_engine=self.rag_engine)
-
-        # Initialize auto-trigger system
-        logger.info("Initializing auto-trigger system...")
-        auto_trigger_config = self.config.get_auto_trigger_config()
-        self.auto_trigger = AutoTrigger(
-            confidence_threshold=auto_trigger_config.get('threshold', 0.7),
-            show_activity=auto_trigger_config.get('show_activity', True)
-        )
-        self.trigger_stats = TriggerStats()
-
-        # Initialize debugging agents
-        logger.info("Initializing debugging agents...")
-        self.debug_agent = DebugAgent(
-            llm_provider=self.llm,
-            rag_engine=self.rag_engine
-        )
-        self.review_agent = CodeReviewAgent(
-            llm_provider=self.llm,
-            rag_engine=self.rag_engine
-        )
-
-        # Initialize knowledge graph
-        logger.info("Initializing knowledge graph...")
-        self.knowledge_graph = KnowledgeGraph()
-        self.code_analyzer = CodeAnalyzer(self.knowledge_graph)
-
-        # Initialize evaluation system
-        logger.info("Initializing evaluation system...")
-        self.ragas_evaluator = RAGASEvaluator(llm_provider=self.llm)
-        self.ab_tester = ABTester(self.ragas_evaluator)
-        self.hybrid_search = HybridSearch()
-
-        # Setup routes
-        logger.info("Setting up API routes...")
+        # CRITICAL: Setup routes FIRST to ensure server has endpoints even if components fail
+        logger.info("Setting up API routes (priority initialization)...")
         self._setup_routes()
 
-        # Log registered routes
+        # Verify routes were registered
         route_count = len([r for r in self.app.routes if hasattr(r, 'path')])
         logger.info(f"Registered {route_count} API routes")
 
@@ -260,8 +221,72 @@ class StandaloneMCPServer:
         key_endpoints = ['/health', '/query', '/review', '/debug']
         registered_paths = [r.path for r in self.app.routes if hasattr(r, 'path')]
         for endpoint in key_endpoints:
-            status = "registered" if endpoint in registered_paths else "MISSING"
+            status = "✓ registered" if endpoint in registered_paths else "✗ MISSING"
             logger.info(f"  {endpoint}: {status}")
+
+        # Initialize components with error handling - server will work with degraded functionality if these fail
+        try:
+            logger.info("Initializing RAG system...")
+            self.rag_engine = QueryEngine()
+        except Exception as e:
+            logger.error(f"Failed to initialize RAG system: {e}. RAG features will be unavailable.")
+            self.rag_engine = None
+
+        try:
+            logger.info("Initializing MAF system...")
+            self.orchestrator = AgentOrchestrator(rag_engine=self.rag_engine) if self.rag_engine else None
+        except Exception as e:
+            logger.error(f"Failed to initialize MAF system: {e}. Agent orchestration will be unavailable.")
+            self.orchestrator = None
+
+        try:
+            logger.info("Initializing auto-trigger system...")
+            auto_trigger_config = self.config.get_auto_trigger_config()
+            self.auto_trigger = AutoTrigger(
+                confidence_threshold=auto_trigger_config.get('threshold', 0.7),
+                show_activity=auto_trigger_config.get('show_activity', True)
+            )
+            self.trigger_stats = TriggerStats()
+        except Exception as e:
+            logger.error(f"Failed to initialize auto-trigger system: {e}. Auto-trigger will be unavailable.")
+            self.auto_trigger = None
+            self.trigger_stats = TriggerStats()  # At least have basic stats
+
+        try:
+            logger.info("Initializing debugging agents...")
+            self.debug_agent = DebugAgent(
+                llm_provider=self.llm,
+                rag_engine=self.rag_engine
+            )
+            self.review_agent = CodeReviewAgent(
+                llm_provider=self.llm,
+                rag_engine=self.rag_engine
+            )
+        except Exception as e:
+            logger.error(f"Failed to initialize debugging agents: {e}. Debug/review features may have limited functionality.")
+            # Create basic agents anyway
+            self.debug_agent = DebugAgent()
+            self.review_agent = CodeReviewAgent()
+
+        try:
+            logger.info("Initializing knowledge graph...")
+            self.knowledge_graph = KnowledgeGraph()
+            self.code_analyzer = CodeAnalyzer(self.knowledge_graph)
+        except Exception as e:
+            logger.error(f"Failed to initialize knowledge graph: {e}. Graph features will be unavailable.")
+            self.knowledge_graph = None
+            self.code_analyzer = None
+
+        try:
+            logger.info("Initializing evaluation system...")
+            self.ragas_evaluator = RAGASEvaluator(llm_provider=self.llm)
+            self.ab_tester = ABTester(self.ragas_evaluator)
+            self.hybrid_search = HybridSearch()
+        except Exception as e:
+            logger.error(f"Failed to initialize evaluation system: {e}. Evaluation features will be unavailable.")
+            self.ragas_evaluator = None
+            self.ab_tester = None
+            self.hybrid_search = None
 
         logger.info("Standalone MCP Server initialized successfully")
 
@@ -323,9 +348,9 @@ class StandaloneMCPServer:
         async def get_info():
             """Get detailed server information."""
             return {
-                "llm": self.llm.get_info(),
-                "rag": self.rag_engine.get_status(),
-                "maf": self.orchestrator.get_status(),
+                "llm": self.llm.get_info() if self.llm else {"status": "unavailable"},
+                "rag": self.rag_engine.get_status() if self.rag_engine else {"status": "unavailable"},
+                "maf": self.orchestrator.get_status() if self.orchestrator else {"status": "unavailable"},
                 "config": {
                     "provider": self.config.get_provider_type(),
                     "auto_trigger": self.config.get_auto_trigger_config()
@@ -341,8 +366,15 @@ class StandaloneMCPServer:
             or direct LLM based on query intent classification.
             """
             try:
+                # Check if LLM is available
+                if not self.llm or not self.llm_available:
+                    raise HTTPException(
+                        status_code=503,
+                        detail="LLM provider is not available. Please configure an LLM provider to use the query endpoint."
+                    )
+
                 # Update context with files if provided
-                if request.context_files:
+                if request.context_files and self.auto_trigger:
                     for file_path in request.context_files:
                         self.auto_trigger.add_file_to_context(file_path)
 
@@ -351,13 +383,14 @@ class StandaloneMCPServer:
                 decision = None
                 activity_message = None
 
-                if request.auto_trigger and use_rag is None:
+                if request.auto_trigger and use_rag is None and self.auto_trigger:
                     # Auto-trigger: let the system decide
                     decision = self.auto_trigger.decide(request.query)
                     use_rag = decision.should_use_rag()
 
                     # Record statistics
-                    self.trigger_stats.record(decision)
+                    if self.trigger_stats:
+                        self.trigger_stats.record(decision)
 
                     # Get activity message
                     primary_action = decision.primary_action()
@@ -369,22 +402,27 @@ class StandaloneMCPServer:
                     )
                 elif use_rag is None:
                     # Default to RAG if auto-trigger disabled and no manual override
-                    use_rag = True
+                    # But only if RAG is available
+                    use_rag = True if self.rag_engine else False
 
-                # Retrieve context if RAG enabled
+                # Retrieve context if RAG enabled and available
                 context = None
-                if use_rag:
+                if use_rag and self.rag_engine:
                     logger.info(f"Retrieving context for: {request.query}")
-                    rag_results = self.rag_engine.query(
-                        request.query,
-                        n_results=self.config.get_rag_config().get('max_results', 5)
-                    )
+                    try:
+                        rag_results = self.rag_engine.query(
+                            request.query,
+                            n_results=self.config.get_rag_config().get('max_results', 5)
+                        )
 
-                    if rag_results:
-                        context = [
-                            f"From {r['metadata'].get('file_path', 'unknown')}:\n{r['text']}"
-                            for r in rag_results
-                        ]
+                        if rag_results:
+                            context = [
+                                f"From {r['metadata'].get('file_path', 'unknown')}:\n{r['text']}"
+                                for r in rag_results
+                            ]
+                    except Exception as e:
+                        logger.warning(f"RAG query failed: {e}. Continuing without context.")
+                        context = None
 
                 # Generate response
                 if request.stream:
@@ -533,22 +571,39 @@ class StandaloneMCPServer:
         @self.app.get("/auto-trigger/stats")
         async def get_trigger_stats():
             """Get auto-trigger statistics."""
+            if not self.trigger_stats:
+                return {"message": "Auto-trigger statistics not available"}
             return self.trigger_stats.get_summary()
 
         @self.app.get("/auto-trigger/context")
         async def get_trigger_context():
             """Get current auto-trigger context."""
+            if not self.auto_trigger:
+                raise HTTPException(
+                    status_code=503,
+                    detail="Auto-trigger system is not available. Server may have initialization issues."
+                )
             return self.auto_trigger.get_context_summary()
 
         @self.app.post("/auto-trigger/context/clear")
         async def clear_trigger_context():
             """Clear auto-trigger context."""
+            if not self.auto_trigger:
+                raise HTTPException(
+                    status_code=503,
+                    detail="Auto-trigger system is not available. Server may have initialization issues."
+                )
             self.auto_trigger.clear_context()
             return {"status": "cleared"}
 
         @self.app.post("/auto-trigger/context/add-file")
         async def add_context_file(file_path: str):
             """Add a file to auto-trigger context."""
+            if not self.auto_trigger:
+                raise HTTPException(
+                    status_code=503,
+                    detail="Auto-trigger system is not available. Server may have initialization issues."
+                )
             self.auto_trigger.add_file_to_context(file_path)
             return {
                 "status": "added",
@@ -559,6 +614,11 @@ class StandaloneMCPServer:
         @self.app.post("/auto-trigger/context/remove-file")
         async def remove_context_file(file_path: str):
             """Remove a file from auto-trigger context."""
+            if not self.auto_trigger:
+                raise HTTPException(
+                    status_code=503,
+                    detail="Auto-trigger system is not available. Server may have initialization issues."
+                )
             self.auto_trigger.remove_file_from_context(file_path)
             return {
                 "status": "removed",
@@ -654,6 +714,12 @@ class StandaloneMCPServer:
             - Class inheritance
             - Code relationships
             """
+            if not self.knowledge_graph or not self.code_analyzer:
+                raise HTTPException(
+                    status_code=503,
+                    detail="Knowledge graph system is not available. Server may have initialization issues."
+                )
+
             try:
                 # Clear existing graph
                 self.knowledge_graph.clear()
@@ -673,6 +739,8 @@ class StandaloneMCPServer:
                     "stats": stats
                 }
 
+            except HTTPException:
+                raise
             except Exception as e:
                 import traceback
                 error_trace = traceback.format_exc()
@@ -693,6 +761,12 @@ class StandaloneMCPServer:
             - usages: Where is this entity used?
             - impact: What's the impact of changing this entity?
             """
+            if not self.knowledge_graph:
+                raise HTTPException(
+                    status_code=503,
+                    detail="Knowledge graph system is not available. Server may have initialization issues."
+                )
+
             try:
                 entity = self.knowledge_graph.get_entity(
                     request.entity_name,
@@ -770,6 +844,11 @@ class StandaloneMCPServer:
         @self.app.get("/graph/stats")
         async def get_graph_stats():
             """Get knowledge graph statistics."""
+            if not self.knowledge_graph:
+                raise HTTPException(
+                    status_code=503,
+                    detail="Knowledge graph system is not available. Server may have initialization issues."
+                )
             return self.knowledge_graph.get_stats()
 
         @self.app.post("/evaluate")
@@ -785,6 +864,12 @@ class StandaloneMCPServer:
             - Context recall (if ground truth provided)
             - Overall score
             """
+            if not self.ragas_evaluator:
+                raise HTTPException(
+                    status_code=503,
+                    detail="Evaluation system is not available. Server may have initialization issues."
+                )
+
             try:
                 evaluation = self.ragas_evaluator.evaluate(
                     query=request.query,
