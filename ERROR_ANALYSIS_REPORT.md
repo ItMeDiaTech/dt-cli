@@ -162,12 +162,23 @@ python3 -c "import fastapi, chromadb, langchain; print('✓ Core dependencies in
 ```
 
 ### Phase 2: Fix Indentation Errors
+
+**Option A: Use the provided fix script (RECOMMENDED)**
 ```bash
-# Fix each file (use black or manual fixing)
-black src/observability/metrics_dashboard.py
-black src/deployment/setup.py
-black src/rag/query_profiler.py
-black src/rag/ast_chunker.py
+# Run the automated fix script
+python3 scripts/fix_indentation.py
+```
+
+**Option B: Manual fixing with autopep8**
+```bash
+# Install autopep8
+pip install autopep8
+
+# Fix each file with aggressive mode
+autopep8 --in-place --aggressive --aggressive src/observability/metrics_dashboard.py
+autopep8 --in-place --aggressive --aggressive src/deployment/setup.py
+autopep8 --in-place --aggressive --aggressive src/rag/query_profiler.py
+autopep8 --in-place --aggressive --aggressive src/rag/ast_chunker.py
 
 # Verify syntax
 python3 -m py_compile src/observability/metrics_dashboard.py
@@ -175,6 +186,13 @@ python3 -m py_compile src/deployment/setup.py
 python3 -m py_compile src/rag/query_profiler.py
 python3 -m py_compile src/rag/ast_chunker.py
 ```
+
+**Option C: Use your IDE's auto-format feature**
+- PyCharm: Code → Reformat Code
+- VSCode: Shift+Alt+F (with Python extension)
+- vim: gg=G (with proper Python indent settings)
+
+**Note:** `black` cannot fix these files as the syntax is too broken to parse.
 
 ### Phase 3: Verification
 ```bash
