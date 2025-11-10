@@ -176,6 +176,22 @@ class StandaloneMCPServer:
             description="100% Open Source RAG/MAF/LLM Server"
         )
 
+        # Add custom exception handler to ensure all errors return JSON
+        @self.app.exception_handler(Exception)
+        async def global_exception_handler(request, exc):
+            """Handle all unhandled exceptions and return proper JSON response."""
+            import traceback
+            error_trace = traceback.format_exc()
+            logger.error(f"Unhandled exception: {exc}\n{error_trace}")
+
+            return JSONResponse(
+                status_code=500,
+                content={
+                    "detail": f"{type(exc).__name__}: {str(exc)}",
+                    "error_type": type(exc).__name__
+                }
+            )
+
         # Load configuration
         logger.info("Loading configuration...")
         self.config = LLMConfig(config_path)
@@ -446,10 +462,10 @@ class StandaloneMCPServer:
                     # Add auto-trigger info if used
                     if decision:
                         result["auto_trigger"] = {
-                            "intent": decision.intent,
-                            "confidence": decision.confidence,
-                            "actions": [a.value for a in decision.actions],
-                            "reasoning": decision.reasoning
+                            "intent": str(decision.intent) if decision.intent else "unknown",
+                            "confidence": float(decision.confidence),
+                            "actions": [str(a.value) for a in decision.actions],
+                            "reasoning": str(decision.reasoning) if decision.reasoning else ""
                         }
 
                     if activity_message:
@@ -461,9 +477,16 @@ class StandaloneMCPServer:
                 import traceback
                 error_trace = traceback.format_exc()
                 logger.error(f"Query error: {e}\n{error_trace}")
+
+                # Sanitize error message to ensure JSON serializability
+                try:
+                    error_msg = str(e).encode('utf-8', errors='replace').decode('utf-8')
+                except Exception:
+                    error_msg = "Unknown error occurred"
+
                 raise HTTPException(
                     status_code=500,
-                    detail=f"{type(e).__name__}: {str(e)}"
+                    detail=f"{type(e).__name__}: {error_msg}"
                 )
 
         @self.app.post("/generate")
@@ -499,9 +522,16 @@ class StandaloneMCPServer:
                 import traceback
                 error_trace = traceback.format_exc()
                 logger.error(f"Generation error: {e}\n{error_trace}")
+
+                # Sanitize error message
+                try:
+                    error_msg = str(e).encode('utf-8', errors='replace').decode('utf-8')
+                except Exception:
+                    error_msg = "Unknown error occurred"
+
                 raise HTTPException(
                     status_code=500,
-                    detail=f"{type(e).__name__}: {str(e)}"
+                    detail=f"{type(e).__name__}: {error_msg}"
                 )
 
         @self.app.post("/rag/index")
@@ -514,9 +544,16 @@ class StandaloneMCPServer:
                 import traceback
                 error_trace = traceback.format_exc()
                 logger.error(f"Indexing error: {e}\n{error_trace}")
+
+                # Sanitize error message
+                try:
+                    error_msg = str(e).encode('utf-8', errors='replace').decode('utf-8')
+                except Exception:
+                    error_msg = "Unknown error occurred"
+
                 raise HTTPException(
                     status_code=500,
-                    detail=f"{type(e).__name__}: {str(e)}"
+                    detail=f"{type(e).__name__}: {error_msg}"
                 )
 
         @self.app.post("/rag/search")
@@ -537,9 +574,16 @@ class StandaloneMCPServer:
                 import traceback
                 error_trace = traceback.format_exc()
                 logger.error(f"RAG search error: {e}\n{error_trace}")
+
+                # Sanitize error message
+                try:
+                    error_msg = str(e).encode('utf-8', errors='replace').decode('utf-8')
+                except Exception:
+                    error_msg = "Unknown error occurred"
+
                 raise HTTPException(
                     status_code=500,
-                    detail=f"{type(e).__name__}: {str(e)}"
+                    detail=f"{type(e).__name__}: {error_msg}"
                 )
 
         @self.app.get("/config")
@@ -563,9 +607,16 @@ class StandaloneMCPServer:
                 import traceback
                 error_trace = traceback.format_exc()
                 logger.error(f"Config reload error: {e}\n{error_trace}")
+
+                # Sanitize error message
+                try:
+                    error_msg = str(e).encode('utf-8', errors='replace').decode('utf-8')
+                except Exception:
+                    error_msg = "Unknown error occurred"
+
                 raise HTTPException(
                     status_code=500,
-                    detail=f"{type(e).__name__}: {str(e)}"
+                    detail=f"{type(e).__name__}: {error_msg}"
                 )
 
         @self.app.get("/auto-trigger/stats")
@@ -649,9 +700,16 @@ class StandaloneMCPServer:
                 import traceback
                 error_trace = traceback.format_exc()
                 logger.error(f"Debug error: {e}\n{error_trace}")
+
+                # Sanitize error message
+                try:
+                    error_msg = str(e).encode('utf-8', errors='replace').decode('utf-8')
+                except Exception:
+                    error_msg = "Unknown error occurred"
+
                 raise HTTPException(
                     status_code=500,
-                    detail=f"{type(e).__name__}: {str(e)}"
+                    detail=f"{type(e).__name__}: {error_msg}"
                 )
 
         @self.app.post("/review")
@@ -693,9 +751,15 @@ class StandaloneMCPServer:
                 error_trace = traceback.format_exc()
                 logger.error(f"Review error: {e}\n{error_trace}")
 
+                # Sanitize error message to ensure JSON serializability
+                try:
+                    error_str = str(e).encode('utf-8', errors='replace').decode('utf-8')
+                except Exception:
+                    error_str = "Unknown error occurred"
+
                 # Provide more helpful error message
-                error_msg = f"{type(e).__name__}: {str(e)}"
-                if not self.llm_available and "llm" in str(e).lower():
+                error_msg = f"{type(e).__name__}: {error_str}"
+                if not self.llm_available and "llm" in error_str.lower():
                     error_msg += " (Note: LLM provider is not available)"
 
                 raise HTTPException(
@@ -745,9 +809,16 @@ class StandaloneMCPServer:
                 import traceback
                 error_trace = traceback.format_exc()
                 logger.error(f"Graph build error: {e}\n{error_trace}")
+
+                # Sanitize error message
+                try:
+                    error_msg = str(e).encode('utf-8', errors='replace').decode('utf-8')
+                except Exception:
+                    error_msg = "Unknown error occurred"
+
                 raise HTTPException(
                     status_code=500,
-                    detail=f"{type(e).__name__}: {str(e)}"
+                    detail=f"{type(e).__name__}: {error_msg}"
                 )
 
         @self.app.post("/graph/query")
@@ -836,9 +907,16 @@ class StandaloneMCPServer:
                 import traceback
                 error_trace = traceback.format_exc()
                 logger.error(f"Graph query error: {e}\n{error_trace}")
+
+                # Sanitize error message
+                try:
+                    error_msg = str(e).encode('utf-8', errors='replace').decode('utf-8')
+                except Exception:
+                    error_msg = "Unknown error occurred"
+
                 raise HTTPException(
                     status_code=500,
-                    detail=f"{type(e).__name__}: {str(e)}"
+                    detail=f"{type(e).__name__}: {error_msg}"
                 )
 
         @self.app.get("/graph/stats")
@@ -884,9 +962,16 @@ class StandaloneMCPServer:
                 import traceback
                 error_trace = traceback.format_exc()
                 logger.error(f"Evaluation error: {e}\n{error_trace}")
+
+                # Sanitize error message
+                try:
+                    error_msg = str(e).encode('utf-8', errors='replace').decode('utf-8')
+                except Exception:
+                    error_msg = "Unknown error occurred"
+
                 raise HTTPException(
                     status_code=500,
-                    detail=f"{type(e).__name__}: {str(e)}"
+                    detail=f"{type(e).__name__}: {error_msg}"
                 )
 
         @self.app.post("/hybrid-search")
@@ -932,9 +1017,16 @@ class StandaloneMCPServer:
                 import traceback
                 error_trace = traceback.format_exc()
                 logger.error(f"Hybrid search error: {e}\n{error_trace}")
+
+                # Sanitize error message
+                try:
+                    error_msg = str(e).encode('utf-8', errors='replace').decode('utf-8')
+                except Exception:
+                    error_msg = "Unknown error occurred"
+
                 raise HTTPException(
                     status_code=500,
-                    detail=f"{type(e).__name__}: {str(e)}"
+                    detail=f"{type(e).__name__}: {error_msg}"
                 )
 
         @self.app.get("/evaluation/stats")
