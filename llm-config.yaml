@@ -41,7 +41,7 @@ llm:
   base_url: http://localhost:11434
   temperature: 0.1
   max_tokens: 4096
-  timeout: 60
+  timeout: 300
 
 # ============================================================================
 # OPTION 2: vLLM (Recommended for Production) - 100% OPEN SOURCE
@@ -99,7 +99,7 @@ llm:
 #   base_url: http://localhost:11434
 #   temperature: 0.1
 #   max_tokens: 4096
-#   timeout: 60
+#   timeout: 300
 
 # ============================================================================
 # OPTION 4: Claude Code (Optional) - PROPRIETARY
@@ -121,7 +121,7 @@ llm:
 #   api_key: <your-anthropic-api-key>  # Get from https://console.anthropic.com/
 #   temperature: 0.1
 #   max_tokens: 4096
-#   timeout: 60
+#   timeout: 300
 
 # ============================================================================
 # RAG Configuration (Optimized for Code - Same for All Providers)
