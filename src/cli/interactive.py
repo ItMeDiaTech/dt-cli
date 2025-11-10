@@ -33,6 +33,7 @@ import subprocess
 import time
 import socket
 import re
+import json
 from pathlib import Path
 from enum import Enum, IntEnum
 from dataclasses import dataclass, field
@@ -1724,21 +1725,66 @@ Provide a comprehensive analysis with specific file names and line references wh
             task = progress.add_task("Reviewing code...", total=None)
 
             try:
-                self.log_api_call("/review", "POST", self.timeout_normal, "Reviewing code for quality issues")
+                self.log_api_call("/review", "POST", self.timeout_long, "Reviewing code for quality issues with streaming")
+
+                # Enable streaming to show progress and prevent timeouts
                 response = self.session.post(
                     f"{self.base_url}/review",
                     json={
                         "code": code,
                         "file_path": file_path,
-                        "language": "python"
+                        "language": "python",
+                        "stream": True
                     },
-                    timeout=self.timeout_normal
+                    stream=True,
+                    timeout=self.timeout_long  # Use longer timeout for streaming
                 )
+
+                # Handle streaming response
+                result = None
+                for line in response.iter_lines():
+                    if line:
+                        line_str = line.decode('utf-8') if isinstance(line, bytes) else line
+                        if line_str.startswith('data: '):
+                            data_str = line_str[6:]  # Remove 'data: ' prefix
+
+                            # Check for completion marker
+                            if data_str == '[DONE]':
+                                break
+
+                            try:
+                                data = json.loads(data_str)
+
+                                if data.get('type') == 'progress':
+                                    # Update progress with current status
+                                    message = data.get('message', 'Processing...')
+                                    progress.update(task, description=message)
+
+                                elif data.get('type') == 'result':
+                                    # Final result received
+                                    result = data.get('data')
+                                    progress.update(task, description="Review complete!", completed=True)
+
+                                elif data.get('type') == 'error':
+                                    # Error occurred
+                                    error_msg = data.get('error', 'Unknown error')
+                                    console.print(f"[red]Error: {error_msg}[/red]")
+                                    return
+
+                            except json.JSONDecodeError:
+                                # Not JSON, might be plain text progress
+                                if data_str and data_str != '[DONE]':
+                                    progress.update(task, description=data_str)
 
                 progress.update(task, completed=True)
 
-                if response.status_code == 200:
-                    result = response.json()
+                # If no result received from streaming, show error
+                if not result:
+                    console.print("[red]No result received from review[/red]")
+                    return
+
+                # Result was already parsed from streaming response
+                if response.status_code == 200 and result:
 
                     # Show warning if LLM is not available
                     if result.get('warning'):
