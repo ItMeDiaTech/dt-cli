@@ -1,19 +1,110 @@
 # dt-cli Project Error Analysis Report
 
-**Date:** November 10, 2025
+**Date:** November 10, 2025 (Updated)
 **Analyzed by:** Claude Code
 **Project:** dt-cli (Developer Tools CLI with RAG/MAF/LLM capabilities)
 
 ## Executive Summary
 
-The project has **2 critical categories of errors** that prevent it from running:
+The project has **3 critical categories of errors** that prevent it from running properly:
 
-1. **Missing Dependencies** (CRITICAL) - Prevents server startup
-2. **Python Syntax Errors** (HIGH) - 4 files with indentation issues
+1. **Timeout Configuration Error** (CRITICAL) - Causes code review to fail with "timed out" error
+2. **Missing Dependencies** (CRITICAL) - Prevents server startup
+3. **Python Syntax Errors** (HIGH) - 4 files with indentation issues
 
 ## Detailed Error Analysis
 
-### 1. Missing Dependencies (CRITICAL PRIORITY)
+### 1. Timeout Configuration Error (CRITICAL PRIORITY) ⚠️ **NEW**
+
+**Issue:** Code review operations fail with timeout error when reviewing entire codebase.
+
+**Error Message:**
+```
+Error: 500
+Details: RuntimeError: Failed to generate response from Ollama: timed out
+```
+
+**Root Cause:**
+The timeout value in `llm-config.yaml` is set to **60 seconds**, which is insufficient for reviewing large codebases. The LLM needs more time to analyze 50 files with up to 500KB of code.
+
+**Evidence:**
+```yaml
+# llm-config.yaml:44
+llm:
+  model_name: qwen2.5-coder:1.5b
+  base_url: http://localhost:11434
+  temperature: 0.1
+  max_tokens: 4096
+  timeout: 60  # ← TOO SHORT FOR CODEBASE REVIEW
+```
+
+**Code Flow:**
+```
+User: "Review entire codebase"
+  ↓
+interactive.py:1662 → handle_codebase_review()
+  ↓
+Collects 50 files × 10,000 chars = ~500KB of code
+  ↓
+Sends to /query endpoint with timeout=300s (HTTP)
+  ↓
+Server forwards to Ollama with timeout=60s (LLM)
+  ↓
+LLM processes large prompt (takes > 60 seconds)
+  ↓
+ollama_provider.py:88 → httpx.Client(timeout=60) times out
+  ↓
+RuntimeError: Failed to generate response from Ollama: timed out
+```
+
+**Why This Happens:**
+1. **Interactive CLI timeout** (300s) applies to HTTP request to server
+2. **LLM provider timeout** (60s) applies to Ollama API call
+3. The LLM timeout is hit first, causing the failure
+4. Even though the CLI waits 300s, Ollama gives up at 60s
+
+**Timeout Inconsistencies Found:**
+| Component | Timeout | Location |
+|-----------|---------|----------|
+| LLM Config (Ollama) | **60s** ❌ | `llm-config.yaml:44` |
+| LLM Config (vLLM) | 120s | `llm-config.yaml:70` |
+| Base Provider Default | 180s | `src/llm/base_provider.py:31` |
+| Interactive CLI - Short | 10s | `src/cli/interactive.py:406` |
+| Interactive CLI - Normal | 180s | `src/cli/interactive.py:407` |
+| Interactive CLI - Long | **300s** ✓ | `src/cli/interactive.py:408` |
+| MAF Framework | 300s | `llm-config.yaml:150` |
+
+**Impact:**
+- ✗ Code review fails on medium-large codebases (>20 files)
+- ✗ User cannot analyze project for errors
+- ✗ Timeout error appears after ~60 seconds
+- ✗ Poor user experience
+
+**Resolution:**
+
+**Quick Fix (Immediate):**
+```bash
+# Update timeout in llm-config.yaml
+sed -i 's/timeout: 60/timeout: 300/g' llm-config.yaml
+```
+
+**Manual Fix:**
+```yaml
+# llm-config.yaml:44
+llm:
+  timeout: 300  # Increased from 60 to 300 for long-running operations
+```
+
+**Long-term Solutions:**
+1. **Enable streaming by default** for codebase reviews (prevents timeout)
+2. **Use RAG instead of dumping all code** into one prompt
+3. **Implement chunked review** - review files in batches
+4. **Add progress updates** during review to show activity
+5. **Centralize timeout configuration** with operation-specific values
+
+---
+
+### 2. Missing Dependencies (CRITICAL PRIORITY)
 
 **Issue:** The project requires 30+ dependencies, but **NONE are installed**.
 
@@ -81,13 +172,13 @@ pip3 install -r requirements.txt
 
 ---
 
-### 2. Python Syntax Errors - Indentation (HIGH PRIORITY)
+### 3. Python Syntax Errors - Indentation (HIGH PRIORITY)
 
 **Issue:** 4 Python files have incorrect indentation (1 space instead of 4 spaces).
 
 **Files Affected:**
 
-#### 2.1 `src/observability/metrics_dashboard.py`
+#### 3.1 `src/observability/metrics_dashboard.py`
 - **Line:** 26-327 (entire class body)
 - **Error:** `IndentationError: expected an indented block after function definition on line 26`
 - **Problem:** Class body indented with 1 space instead of 4
@@ -105,19 +196,19 @@ class MetricsDashboard:
  ...
 ```
 
-#### 2.2 `src/deployment/setup.py`
+#### 3.2 `src/deployment/setup.py`
 - **Line:** 29-end (class body)
 - **Error:** `IndentationError: expected an indented block after function definition on line 29`
 - **Problem:** Class `SetupManager` body indented with 1 space
 - **Impact:** Setup utilities broken, automated deployment fails
 
-#### 2.3 `src/rag/query_profiler.py`
+#### 3.3 `src/rag/query_profiler.py`
 - **Line:** 39-end (method body)
 - **Error:** `IndentationError: expected an indented block after function definition on line 39`
 - **Problem:** Method `complete()` body indented with 1 space
 - **Impact:** Query profiling broken, performance monitoring unavailable
 
-#### 2.4 `src/rag/ast_chunker.py`
+#### 3.4 `src/rag/ast_chunker.py`
 - **Line:** 70-end (method body)
 - **Error:** `IndentationError: expected an indented block after function definition on line 70`
 - **Problem:** Method `__init__()` body indented with 1 space
@@ -133,6 +224,7 @@ class MetricsDashboard:
 
 | Priority | Category | Count | Blocking? | Impact |
 |----------|----------|-------|-----------|--------|
+| **P0** | **Timeout Configuration** | **1** | **YES** | **Code review fails** |
 | P0 | Missing Dependencies | 30+ | YES | Server won't start |
 | P1 | Indentation Errors | 4 | YES | Modules fail to compile |
 
@@ -151,6 +243,18 @@ class MetricsDashboard:
 ---
 
 ## Recommended Fix Order
+
+### Phase 0: Timeout Configuration (CRITICAL - IMMEDIATE FIX)
+```bash
+# Fix the timeout that's causing your current error
+sed -i 's/timeout: 60/timeout: 300/g' llm-config.yaml
+
+# Verify the change
+grep "timeout:" llm-config.yaml
+
+# Expected output:
+# timeout: 300
+```
 
 ### Phase 1: Dependencies (CRITICAL)
 ```bash
@@ -206,6 +310,12 @@ curl http://localhost:58432/health
 curl -X POST http://localhost:58432/query \
   -H "Content-Type: application/json" \
   -d '{"query": "test", "auto_trigger": false}'
+
+# Test code review (the operation that was timing out)
+# This should now work with the increased timeout
+curl -X POST http://localhost:58432/review \
+  -H "Content-Type: application/json" \
+  -d '{"code": "print(\"hello\")", "file_path": "test.py", "language": "python"}'
 ```
 
 ---
@@ -218,11 +328,18 @@ curl -X POST http://localhost:58432/query \
 - Route registration logic is correct
 - Error handling is comprehensive
 - Graceful degradation when LLM unavailable
+- Streaming support implemented for code review (good for preventing timeouts)
+- Progress callback system in review agent
 
 ### Areas of Concern ⚠️
+- **Timeout mismatch** between CLI (300s) and LLM provider (60s)
 - No dependency installation check in setup
 - No automated indentation checking (pre-commit hooks)
 - Missing requirements verification in CI/CD
+- Large prompts (500KB) sent to LLM without chunking
+- No token counting or truncation for large codebases
+- Hardcoded file limits (50 files, 10KB per file) without configuration
+- Missing validation of streaming response format
 
 ---
 
