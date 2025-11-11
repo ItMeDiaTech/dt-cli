@@ -16,7 +16,7 @@ class QueryEngine:
     """
     Query engine that combines embeddings, vector store, and ingestion.
 
-    MEDIUM PRIORITY FIX: Integrate configuration management and caching.
+    Features: Configuration management and query result caching.
     """
 
     def __init__(
@@ -31,8 +31,6 @@ class QueryEngine:
         """
         Initialize the query engine.
 
-        MEDIUM PRIORITY FIX: Use ConfigManager instead of hardcoded defaults.
-
         Args:
             embedding_model: Name of the embedding model (overrides config)
             persist_directory: Directory to persist vector store (overrides config)
@@ -41,7 +39,7 @@ class QueryEngine:
             config_manager: Optional ConfigManager instance
             enable_cache: Enable query result caching
         """
-        # MEDIUM PRIORITY FIX: Use config manager if provided
+        # Use config manager if provided, otherwise try to import global config
         if config_manager:
             from ..config.config_manager import ConfigManager
             self.config = config_manager
@@ -62,7 +60,7 @@ class QueryEngine:
                     self.config = None
                     logger.warning("ConfigManager not available, using default values")
 
-        # MEDIUM PRIORITY FIX: Remove hardcoded defaults, use config
+        # Get configuration values with fallback to defaults
         if self.config:
             embedding_model = embedding_model or self.config.get('embedding_model', 'all-MiniLM-L6-v2')
             persist_directory = persist_directory or self.config.get('db_path', './.rag_data')
@@ -82,7 +80,7 @@ class QueryEngine:
             chunk_overlap=chunk_overlap
         )
 
-        # MEDIUM PRIORITY FIX: Integrate query result caching
+        # Initialize query result caching if enabled
         self.cache: Optional[QueryCache] = None
         if enable_cache:
             # Get cache settings from config
@@ -146,9 +144,7 @@ class QueryEngine:
         use_cache: bool = True
     ) -> List[Dict[str, Any]]:
         """
-        Query the RAG system.
-
-        MEDIUM PRIORITY FIX: Integrate query result caching.
+        Query the RAG system with optional caching.
 
         Args:
             query_text: Query string
@@ -159,13 +155,13 @@ class QueryEngine:
         Returns:
             List of results with text, metadata, and scores
         """
-        # MEDIUM PRIORITY FIX: Use config for n_results default
+        # Use config for n_results default if not specified
         if n_results is None:
             n_results = self.config.get('n_results', 5) if self.config else 5
 
         logger.info(f"Querying: {query_text}")
 
-        # MEDIUM PRIORITY FIX: Check cache first
+        # Check cache first if enabled
         if use_cache and self.cache:
             cached_results = self.cache.get(query_text, n_results, file_type)
             if cached_results is not None:
@@ -200,7 +196,7 @@ class QueryEngine:
                 }
                 formatted_results.append(result)
 
-        # MEDIUM PRIORITY FIX: Cache results
+        # Cache results for future queries
         if use_cache and self.cache:
             self.cache.put(query_text, formatted_results, n_results, file_type)
 
@@ -209,9 +205,7 @@ class QueryEngine:
 
     def get_status(self) -> Dict[str, Any]:
         """
-        Get the status of the RAG system.
-
-        MEDIUM PRIORITY FIX: Include cache statistics.
+        Get the status of the RAG system including cache statistics.
 
         Returns:
             Status information
@@ -225,7 +219,7 @@ class QueryEngine:
             'status': 'ready' if count > 0 else 'not_indexed'
         }
 
-        # MEDIUM PRIORITY FIX: Add cache stats if caching enabled
+        # Add cache stats if caching enabled
         if self.cache:
             status['cache_stats'] = self.cache.get_stats()
 
@@ -233,14 +227,12 @@ class QueryEngine:
 
     def reset(self):
         """
-        Reset the RAG system (delete all indexed data).
-
-        MEDIUM PRIORITY FIX: Clear cache on reset.
+        Reset the RAG system (delete all indexed data and clear cache).
         """
         logger.info("Resetting RAG system")
         self.vector_store.reset()
 
-        # MEDIUM PRIORITY FIX: Clear cache when resetting
+        # Clear cache when resetting
         if self.cache:
             self.cache.clear()
 

@@ -24,8 +24,6 @@ class VectorStore:
         """
         Initialize the vector store.
 
-        MEDIUM PRIORITY FIX: Add path traversal validation.
-
         Args:
             persist_directory: Directory to persist the database
             collection_name: Name of the collection to use
@@ -33,7 +31,7 @@ class VectorStore:
         Raises:
             ValueError: If persist_directory is invalid or attempts path traversal
         """
-        # MEDIUM PRIORITY FIX: Validate persist_directory to prevent path traversal
+        # Validate persist_directory to prevent path traversal
         from pathlib import Path
 
         persist_path = Path(persist_directory).resolve()
@@ -154,7 +152,7 @@ class VectorStore:
 
         logger.debug(f"Querying vector store for top {n_results} results")
 
-        # HIGH PRIORITY FIX: Add error handling
+        # Error handling to return empty results on failure
         try:
             results = self.collection.query(
                 query_embeddings=query_embeddings,
@@ -177,7 +175,7 @@ class VectorStore:
         """Delete the entire collection."""
         self.initialize()
 
-        # HIGH PRIORITY FIX: Add error handling
+        # Error handling for collection deletion
         try:
             self.client.delete_collection(name=self.collection_name)
             logger.info(f"Collection '{self.collection_name}' deleted")

@@ -52,7 +52,8 @@ class EmbeddingEngine:
         """
         Load the embedding model.
 
-        MEDIUM PRIORITY FIX: Add error handling for model loading failures.
+        Raises:
+            RuntimeError: If model loading fails
         """
         if self.model is None:
             logger.info(f"Loading embedding model: {self.model_name}")
